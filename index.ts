@@ -56,7 +56,7 @@ client.on("messageCreate", async (message) => {
 
   await message.reply({
     content: stripBackticksAroundMentions(resp),
-    allowedMentions: { users: [...ids] },
+    allowedMentions: { users: [], parse: ["roles", "users", "everyone"] },
   });
 });
 
