@@ -62,6 +62,7 @@ export async function handleMessage(
   let reply = "";
 
   await qwenModel.act(chat, tools, {
+    maxTokens: 400,
     onMessage: async (message) => {
       chat.append(message);
       subLogger.debug("Response", {
