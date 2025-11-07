@@ -1,4 +1,5 @@
 import { rollDiceTool } from "./dice";
+import { bugReport, readBugs, readRepoFile } from "./github";
 import { addPersistentMemoryTool, getPersistentMemoryTool } from "./memory";
 import { typescriptSandboxTool } from "./sandbox";
 import {
@@ -18,5 +19,8 @@ export async function toolsProvider() {
     getTechStackTool,
     scoreBoardScoreNames,
     typescriptSandboxTool,
+    bugReport,
+    readBugs,
+    readRepoFile,
   ];
 }
