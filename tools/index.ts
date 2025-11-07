@@ -8,6 +8,7 @@ import {
   scoreBoardScoreNames,
 } from "./scoreboard";
 import { getTechStackTool } from "./techstack";
+import { searchTool } from "./wiki";
 
 export async function toolsProvider() {
   return [
@@ -22,5 +23,6 @@ export async function toolsProvider() {
     bugReport,
     readBugs,
     readRepoFile,
+    searchTool,
   ];
 }

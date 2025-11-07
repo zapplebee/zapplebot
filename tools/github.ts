@@ -53,7 +53,7 @@ export const bugReport = tool({
   name: "bugReport",
   description: text`
 Open a bug in zapplebee/zapplebot using the GitHub API. 
-Use this for user-reported problems, regressions, or feature gaps discovered while chatting.`,
+Use this for user-reported problems, regressions, or feature gaps discovered while chatting. There is not issue template`,
   parameters: {
     title: z.string().min(3).max(300),
     body: z
@@ -150,7 +150,7 @@ export const readRepoFile = tool({
   name: "readRepoFile",
   description: text`
 Read a file from zapplebee/zapplebot repository via the Contents API.
-Useful for pulling markdown templates (e.g., ISSUE_TEMPLATE), config, etc.`,
+Useful for pulling information about the implementation`,
   parameters: {
     path: z
       .string()
