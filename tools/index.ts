@@ -9,6 +9,7 @@ import {
 } from "./scoreboard";
 import { getTechStackTool } from "./techstack";
 import { searchTool } from "./wiki";
+import { utilTools } from "./utils";
 
 export async function toolsProvider() {
   return [
@@ -24,5 +25,6 @@ export async function toolsProvider() {
     readBugs,
     readRepoFile,
     searchTool,
+    ...utilTools,
   ];
 }
