@@ -52,12 +52,16 @@ Behavior:
 - Return the **full updated scoreboard** so the bot can summarize results.
 
 Examples of how to parametrize:
-"Give <@123> +3 party_points" → { username: "<@123>", scoreName: "party_points", scoreDelta: 3 }
-"<@555> loses 2 reputation" → { username: "<@555>", scoreName: "reputation", scoreDelta: -2 }
-"Add one win to <@987>" → { username: "<@987>", scoreName: "wins", scoreDelta: 1 }
+"Give <@535097720785076245> +3 party_points" → { username: "<@535097720785076245>", scoreName: "party_points", scoreDelta: 3 }
+"<@5286624765194797058> loses 2 reputation" → { username: "<@5286624765194797058>", scoreName: "reputation", scoreDelta: -2 }
+"Add one win to <@205845828185620480>" → { username: "<@205845828185620480>", scoreName: "wins", scoreDelta: 1 }
+
+username **MUST** be in this format <@5286624765194797058>
   `,
   parameters: {
-    username: z.string(),
+    username: z
+      .string()
+      .regex(/^<@\d+>$/, "username MUST be in the format <@1234567890>"),
     scoreDelta: z.number().int(),
     scoreName: z.string(),
   },
