@@ -1,5 +1,11 @@
-import { Client, GatewayIntentBits, userMention } from "discord.js";
+import {
+  Client,
+  GatewayIntentBits,
+  TextChannel,
+  userMention,
+} from "discord.js";
 import { handleMessage } from "./handle-message";
+import type { ChatLike } from "@lmstudio/sdk";
 function stripBackticksAroundMentions(text: string): string {
   // Replace ` <@123> ` or `<@123>` wrapped in backticks
   return text.replace(/`<@!?(\d+)>`/g, "<@$1>");
@@ -29,8 +35,27 @@ client.on("messageCreate", async (message) => {
 
   if (message.author.bot) return;
 
+  const channel = await client.channels.fetch(message.channelId);
+  // Make sure it is text-based
+  if (!channel || !(channel instanceof TextChannel)) return;
+
+  const messages = await channel.messages.fetch({ limit: 5 });
   const me = client.user;
+
   if (!me || !message.mentions.users.has(me.id)) return;
+  const chatHistory: ChatLike = messages
+    .filter((e) => e.id !== message.id)
+    .reverse()
+    .map((e) => {
+      return {
+        role: e.id === me.id ? "assistant" : "user",
+        content: e.id === me.id ? e.content : `<@${e.id}> says: ${e.content}`,
+      };
+    });
+
+  messages.forEach((msg) => {
+    console.log(`[${msg.author.id}] ${msg.content}`);
+  });
 
   const cleaned =
     (message.content ?? "")
@@ -43,7 +68,8 @@ client.on("messageCreate", async (message) => {
   const resp = await handleMessage(
     cleaned,
     userMention(message.author.id),
-    message.id
+    message.id,
+    chatHistory
   );
   const ids = new Set<string>();
   const regex = /<@!?(\d+)>/g;

@@ -22,7 +22,8 @@ const tools = await toolsProvider();
 export async function handleMessage(
   cleaned: string,
   userMentionString: string,
-  messageId: string
+  messageId: string,
+  history: ChatLike
 ): Promise<string> {
   const memoryTool = await getMemoryRaw();
   const chatId = randomBytes(8).toString("hex"); // 8 bytes → 16 hex chars
@@ -41,12 +42,16 @@ export async function handleMessage(
 
       You are being addressed by ${userMentionString}. You can address them by ${userMentionString} or gender neutral pronouns.
       You are running on a Discord of about 30 people.
-      Always acknowledge the completion of the user's request. If you used a tool, tell the user.`,
+      Always acknowledge the completion of the user's request. If you used a tool, tell the user.
+      
+      Keep your response to about 1500 characters.
+      `,
     },
     ...memoryTool.map((e) => ({
       role: "assistant" as "assistant",
       content: `[memory] ${e.summary}`,
     })),
+    ...(history as any),
     { role: "user", content: cleaned },
   ];
 
@@ -62,7 +67,6 @@ export async function handleMessage(
   let reply = "";
 
   await qwenModel.act(chat, tools, {
-    maxTokens: 400,
     onMessage: async (message) => {
       chat.append(message);
       subLogger.debug("Response", {
