@@ -1,0 +1,2 @@
+# zapplebot
+A discord bot
