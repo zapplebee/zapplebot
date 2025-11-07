@@ -16,6 +16,16 @@ The code is executed in:
 - and a small writable tmpfs for temporary files
 
 This is useful for evaluating or testing code safely without granting host access.
+
+Add comments that would be useful for the user to understand the code.
+
+You always need to log the result so that you can read the stdout to get the result of your code.
+
+If you use this tool, you **MUST** include the code you ran in the message you return to the user. Put it in a codefence like this:
+
+\`\`\`typescript
+// your code
+\`\`\`
   `,
   parameters: {
     code: z.string().describe("The TypeScript/JavaScript code to execute."),
