@@ -5,9 +5,12 @@ import {
   Chat,
   type ChatLike,
   type ChatMessageInput,
+  type ToolCallRequest,
+  type ToolCallResult,
+  text,
 } from "@lmstudio/sdk";
 import { toolsProvider } from "./tools";
-import { getMemoryRaw } from "./tools/memory";
+import { getMemoryRaw, getRelevantMemories } from "./tools/memory";
 
 const logger = winston.createLogger({
   level: "debug",
@@ -19,12 +22,17 @@ const lm = new LMStudioClient();
 const qwenModel = await lm.llm.model("qwen/qwen3-4b-2507");
 const tools = await toolsProvider();
 
+type HandleMessageResponse = {
+  content: string;
+  toolBlock?: string;
+};
+
 export async function handleMessage(
   cleaned: string,
   userMentionString: string,
   messageId: string,
-  history: ChatLike
-): Promise<string> {
+  history: Array<ChatMessageInput>
+): Promise<HandleMessageResponse> {
   const memoryTool = await getMemoryRaw();
   const chatId = randomBytes(8).toString("hex"); // 8 bytes → 16 hex chars
   const subLogger = logger.child({
@@ -35,23 +43,44 @@ export async function handleMessage(
 
   const chat = Chat.from([]);
 
+  const simpleContext: Array<string> = [
+    ...history.filter((e) => e.role === "user").map((e) => e.content as string),
+    cleaned,
+  ];
+
+  const relevantMems = await getRelevantMemories(...simpleContext);
+
+  const memChat =
+    relevantMems.length > 0
+      ? [
+          {
+            role: "system" as const,
+            content: `
+# Private Memory (do not mention unless directly relevant to the last 1–2 messages)
+# If not relevant, ignore completely.
+${relevantMems.map((e) => `- ${e.summary} -- from ${e.date}`)}`,
+          },
+        ]
+      : [];
+
   const system: ChatLike = [
     {
       role: "system",
-      content: `You are Zapplebot, a cute and concise helpful bot with access to tools.
+      content: text`You are Zapplebot ⚡️🍎🤖, a cute and concise helpful bot with access to tools.
 
       You are being addressed by ${userMentionString}. You can address them by ${userMentionString} or gender neutral pronouns.
       You are running on a Discord of about 30 people.
-      Always acknowledge the completion of the user's request. If you used a tool, tell the user.
       
-      Keep your response to about 1500 characters.
+      Guidelines:
+      - Keep your response to about 1500 characters.
+      - Keep responses on topic.
+      - Refrain from simply listing capabilities unless asked.
+
+      The current date is ${new Date().toISOString()}
       `,
     },
-    ...memoryTool.map((e) => ({
-      role: "assistant" as "assistant",
-      content: `[memory] ${e.summary}`,
-    })),
-    ...(history as any),
+    ...memChat,
+    ...history,
     { role: "user", content: cleaned },
   ];
 
@@ -66,6 +95,10 @@ export async function handleMessage(
 
   let reply = "";
 
+  let toolCallRequests: Array<ToolCallRequest> = [];
+
+  let toolCallResults: Array<ToolCallResult> = [];
+
   await qwenModel.act(chat, tools, {
     onMessage: async (message) => {
       chat.append(message);
@@ -75,9 +108,22 @@ export async function handleMessage(
         toolCallResults: message.getToolCallResults(),
         content: message.getText(),
       });
+      toolCallRequests.push(...(await message.getToolCallRequests()));
+      toolCallResults.push(...(await message.getToolCallResults()));
       reply += message.getText();
     },
   });
 
-  return reply;
+  let toolBlock: string | undefined;
+  if (toolCallRequests.length > 0 || toolCallResults.length > 0) {
+    toolBlock = `//tools
+// requests
+${JSON.stringify(toolCallRequests, null, 2)}
+
+// responses
+${JSON.stringify(toolCallResults, null, 2)}
+`;
+  }
+
+  return { content: reply, toolBlock };
 }

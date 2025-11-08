@@ -1,6 +1,6 @@
 import { rollDiceTool } from "./dice";
 import { bugReport, readBugs, readRepoFile } from "./github";
-import { addPersistentMemoryTool, getPersistentMemoryTool } from "./memory";
+import { addPersistentMemoryTool } from "./memory";
 import { typescriptSandboxTool } from "./sandbox";
 import {
   scoreBoardTool,
@@ -14,7 +14,6 @@ import { utilTools } from "./utils";
 export async function toolsProvider() {
   return [
     addPersistentMemoryTool,
-    getPersistentMemoryTool,
     rollDiceTool,
     scoreBoardTool,
     getScoreBoardTool,
