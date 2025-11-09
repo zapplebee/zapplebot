@@ -70,9 +70,6 @@ ${toolNames.join("\n")}
 
   const out = await judgeModel.respond(chat, { structured: responseSchema });
 
-  console.log("Decided to respond on my own");
-  console.log(out.parsed);
-
   try {
     const doRespond = out.parsed.should_reply;
     return doRespond;
