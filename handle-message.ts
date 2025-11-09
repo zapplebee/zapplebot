@@ -1,5 +1,3 @@
-import * as winston from "winston";
-import { randomBytes } from "node:crypto";
 import {
   LMStudioClient,
   Chat,
@@ -10,13 +8,8 @@ import {
   text,
 } from "@lmstudio/sdk";
 import { toolsProvider } from "./tools";
-import { getMemoryRaw, getRelevantMemories } from "./tools/memory";
-
-const logger = winston.createLogger({
-  level: "debug",
-  format: winston.format.json(),
-  transports: [new winston.transports.File({ filename: "chat.log" })],
-});
+import { getRelevantMemories } from "./tools/memory";
+import { getCtxId, setCtx, logger } from "./global";
 
 const lm = new LMStudioClient();
 const qwenModel = await lm.llm.model("qwen/qwen3-4b-2507");
@@ -28,24 +21,21 @@ type HandleMessageResponse = {
 };
 
 export async function handleMessage(
-  cleaned: string,
-  userMentionString: string,
-  messageId: string,
+  prompt: string,
+  username: string,
   history: Array<ChatMessageInput>
 ): Promise<HandleMessageResponse> {
-  const memoryTool = await getMemoryRaw();
-  const chatId = randomBytes(8).toString("hex"); // 8 bytes → 16 hex chars
+  const chatId = getCtxId();
   const subLogger = logger.child({
     chatId,
-    user: userMentionString,
-    discordMessageId: messageId,
+    user: username,
   });
 
   const chat = Chat.from([]);
 
   const simpleContext: Array<string> = [
     ...history.filter((e) => e.role === "user").map((e) => e.content as string),
-    cleaned,
+    prompt,
   ];
 
   const relevantMems = await getRelevantMemories(...simpleContext);
@@ -68,7 +58,7 @@ ${relevantMems.map((e) => `- ${e.summary} -- from ${e.date}`)}`,
       role: "system",
       content: text`You are Zapplebot ⚡️🍎🤖, a cute and concise helpful bot with access to tools.
 
-      You are being addressed by ${userMentionString}. You can address them by ${userMentionString} or gender neutral pronouns.
+      You are being addressed by ${username}. You can address them by ${username} or gender neutral pronouns.
       You are running on a Discord of about 30 people.
       
       Guidelines:
@@ -81,7 +71,7 @@ ${relevantMems.map((e) => `- ${e.summary} -- from ${e.date}`)}`,
     },
     ...memChat,
     ...history,
-    { role: "user", content: cleaned },
+    { role: "user", content: prompt },
   ];
 
   function initChat(chatMessage: ChatMessageInput) {
@@ -124,6 +114,10 @@ ${JSON.stringify(toolCallRequests, null, 2)}
 ${JSON.stringify(toolCallResults, null, 2)}
 `;
   }
+
+  setCtx((e) => {
+    return { ...e, toolCallRequests, toolCallResults };
+  });
 
   return { content: reply, toolBlock };
 }
