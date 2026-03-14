@@ -1,5 +1,5 @@
 // tools/github-bugs.ts
-import { tool, text } from "@lmstudio/sdk";
+import { tool, text } from "../bot-tool";
 import { z } from "zod";
 
 const GH_PAT = process.env.GH_PAT;
@@ -124,7 +124,7 @@ Optionally filter by label(s) or search text, and paginate.`,
         `repo:${OWNER}/${REPO}`,
         "is:issue",
         "is:open",
-        ...(labels ?? []).map((l) => `label:"${l.replace(/"/g, '\\"')}"`),
+        ...(labels ?? []).map((l: string) => `label:"${l.replace(/"/g, '\\"')}"`),
         query,
       ].join(" ");
       const search = await ghFetch(

@@ -57,32 +57,7 @@ export const logger = winston.createLogger({
     winston.format.timestamp(),
     winston.format.json()
   ),
-  /*
-    name: string;
-    ssl: boolean;
-    host: string;
-    maximumDepth: number;
-    port: number;
-    auth?: {
-      username?: string | undefined;
-      password?: string | undefined;
-      bearer?: string | undefined;
-    };
-    path: string;
-    agent?: Agent | null;
-  */
   transports: [
     new winston.transports.File({ filename: "chat.log" }),
-    new winston.transports.Http({
-      host: "localhost",
-      ssl: false,
-      maximumDepth: 100,
-      port: 5080,
-      auth: {
-        username: process.env.OPEN_OBSERVE_USERNAME,
-        password: process.env.OPEN_OBSERVE_PASSWORD,
-      },
-      path: "/api/default/logs/_json",
-    }),
   ],
 });
