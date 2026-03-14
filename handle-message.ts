@@ -73,7 +73,7 @@ ${relevantMems.map((e) => `- ${e.summary} -- from ${e.date}`).join("\n")}`,
       messages,
       tools: openaiTools,
       tool_choice: "auto",
-      max_tokens: 400,
+      max_tokens: 2048,
     });
 
     const choice = response.choices[0];
@@ -149,6 +149,11 @@ ${JSON.stringify(toolCallResults, null, 2)}
   setCtx((e) => {
     return { ...e, toolCallRequests, toolCallResults };
   });
+
+  if (!reply.trim()) {
+    subLogger.warn("empty reply from LLM, suppressing message");
+    return { content: "", toolBlock };
+  }
 
   return { content: reply, toolBlock };
 }

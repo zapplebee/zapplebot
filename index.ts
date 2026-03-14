@@ -111,6 +111,8 @@ client.on("messageCreate", async (message) => {
         chatHistory
       );
 
+      if (!llmResp.content.trim()) return;
+
       await sendMessage({
         content: stripBackticksAroundMentions(llmResp.content),
         toolBlock: llmResp.toolBlock,
