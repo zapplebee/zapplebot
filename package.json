@@ -4,7 +4,9 @@
   "type": "module",
   "private": true,
   "scripts": {
-    "bot": "bun run index.ts"
+    "bot": "bun run index.ts",
+    "webhook": "bun run webhook.ts",
+    "cron": "bun run cron.ts"
   },
   "devDependencies": {
     "@types/bun": "latest"
@@ -14,6 +16,7 @@
   },
   "dependencies": {
     "@lmstudio/sdk": "^1.5.0",
+    "cheerio": "^1.2.0",
     "compute-cosine-similarity": "^1.1.0",
     "discord.js": "^14.24.2",
     "hono": "^4.10.4",

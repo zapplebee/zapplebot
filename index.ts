@@ -10,6 +10,7 @@ import type OpenAI from "openai";
 import { makeSender, type SendMessage } from "./sendMessage";
 import { shouldReply } from "./judge";
 import { logger, withCtx } from "./global";
+import { startServer } from "./server";
 
 function stripBackticksAroundMentions(text: string): string {
   return text.replace(/`<@!?(\d+)>`/g, "<@$1>");
@@ -45,6 +46,7 @@ const EMOJI_FAIL = "❌";
 client.once("clientReady", () => {
   logger.info("zapplebot ready", { botId: client.user?.id, botTag: client.user?.tag });
   sendMessage({ content: startupMessage, channelId: BOTLAND_CHANNEL_ID });
+  startServer(sendMessage);
 });
 
 client.on("messageCreate", async (message) => {

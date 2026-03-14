@@ -10,6 +10,8 @@ import {
 import { getTechStackTool } from "./techstack";
 import { searchTool } from "./wiki";
 import { utilTools } from "./utils";
+import { uptimeTool } from "./uptime";
+import { snowEmergencyTool } from "./snow";
 import type { BotTool } from "../bot-tool";
 import { z } from "zod";
 import { zodToJsonSchema } from "zod-to-json-schema";
@@ -27,6 +29,8 @@ export const tools: BotTool[] = [
   readBugs,
   readRepoFile,
   searchTool,
+  uptimeTool,
+  snowEmergencyTool,
   ...utilTools,
 ];
 

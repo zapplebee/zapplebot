@@ -6,16 +6,41 @@ A Discord bot running on Bun + TypeScript. It uses an OpenAI-compatible API for 
 
 ## Running the bot
 
+The bot runs as a systemd user service. Standard controls:
+
 ```bash
-bun run bot                              # start normally
-bun run bot -- --startupmessage "..."   # start with custom Discord announcement
+systemctl --user status zapplebot.service
+systemctl --user restart zapplebot.service
+systemctl --user stop zapplebot.service
+journalctl --user -u zapplebot.service -f
 ```
 
-The bot runs in the `zapplebot` tmux session on this machine. To restart it:
+Service file: `~/.config/systemd/user/zapplebot.service`
+
+**After making code changes, always restart:**
 
 ```bash
-tmux send-keys -t zapplebot C-c Enter && sleep 1
-tmux send-keys -t zapplebot 'bun run bot -- --startupmessage "..."' Enter
+systemctl --user restart zapplebot.service
+```
+
+If the service file itself changed, reload first:
+
+```bash
+systemctl --user daemon-reload && systemctl --user restart zapplebot.service
+```
+
+To restart with a custom Discord announcement, set `STARTUP_MESSAGE` transiently:
+
+```bash
+systemctl --user set-environment STARTUP_MESSAGE="..." && \
+  systemctl --user restart zapplebot.service && \
+  systemctl --user unset-environment STARTUP_MESSAGE
+```
+
+Or pass it directly via the webhook script:
+
+```bash
+bun run webhook "..."
 ```
 
 ## LLM backend
@@ -33,6 +58,20 @@ journalctl --user -u llama-server -n 50
 Service file: `~/.config/systemd/user/llama-server.service`
 Currently running: Qwen2.5-3B-Instruct-Q4_K_M at `127.0.0.1:8888`
 
+## Cron jobs
+
+| Service | Schedule | Purpose |
+|---|---|---|
+| `zapplebot-snow-cron.timer` | every 30 min | Fetch Minneapolis snow emergency status, post to botland if changed |
+
+```bash
+systemctl --user status zapplebot-snow-cron.timer
+systemctl --user start zapplebot-snow-cron.service   # run immediately
+journalctl --user -u zapplebot-snow-cron.service -n 50
+```
+
+Cron logs are written to the same `chat.log` as the bot, tagged with `process: "snow-emergency-cron"`.
+
 ## Key files
 
 | File | Purpose |
@@ -45,6 +84,10 @@ Currently running: Qwen2.5-3B-Instruct-Q4_K_M at `127.0.0.1:8888`
 | `global.ts` | Winston logger, AsyncLocalStorage context (withCtx, getCtxId) |
 | `tools/index.ts` | Exports `tools[]` and `openaiTools[]` singletons |
 | `sendMessage.ts` | Discord message sender (handles 2000-char splits) |
+| `server.ts` | Hono HTTP server (port 8586) — `/health` and `/webhook` endpoints |
+| `webhook.ts` | CLI + importable module to post to the webhook endpoint |
+| `snow.ts` | Shared snow emergency data fetching + lowdb store (`cron.json`) |
+| `cron.ts` | Minneapolis snow emergency checker — run by systemd timer |
 
 ## Adding a new tool
 
@@ -78,7 +121,8 @@ for line in sys.stdin:
 
 - `memory.json` — persistent user memories (lowdb)
 - `db.json` — scoreboard (lowdb)
-- `chat.log` — interaction logs
+- `cron.json` — cron job state (e.g. last posted snow emergency version)
+- `chat.log` — interaction logs (both bot and cron processes)
 
 ## Known issues / gotchas
 

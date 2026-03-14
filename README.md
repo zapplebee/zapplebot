@@ -16,6 +16,7 @@ Runs on **Bun + TypeScript** with a local or cloud LLM backend.
 | Tool Schema | zod + zod-to-json-schema |
 | Memory | lowdb (JSON flat file) |
 | Logging | Winston (structured JSON → `chat.log`) |
+| HTTP | Hono (port 8586 — `/health`, `/webhook`) |
 
 ---
 
@@ -82,18 +83,44 @@ CLAUDE_MODEL=claude-haiku-4-5-20251001
 
 # GitHub (for github issues tool)
 GH_PAT=github_pat_...
+
+# Webhook secret for POST /webhook (generate with: openssl rand -hex 32)
+WEBHOOK_SECRET=your_secret_here
 ```
 
 ### 4. Run the bot
 
+The bot runs as a **systemd user service** — not directly via `bun run`.
+
 ```bash
-bun run bot
+# First-time setup
+systemctl --user enable --now zapplebot.service
+
+# After making code changes, restart to pick them up
+systemctl --user restart zapplebot.service
+
+# Other controls
+systemctl --user stop zapplebot.service
+systemctl --user status zapplebot.service
 ```
 
-With a custom startup message (sent to botland on connect):
+Service files live in `~/.config/systemd/user/`.
+
+---
+
+## After Making Changes
+
+**Always restart the service to apply code changes:**
 
 ```bash
-bun run bot -- --startupmessage "Hey, I'm back online."
+systemctl --user restart zapplebot.service
+```
+
+If you changed the systemd service file itself:
+
+```bash
+systemctl --user daemon-reload
+systemctl --user restart zapplebot.service
 ```
 
 ---
@@ -124,7 +151,57 @@ The bot calls these autonomously — no slash commands needed.
 | `run_typescript_javascript` | Execute code in a sandboxed Docker container |
 | `get_github_issues` | Fetch open issues from a GitHub repo |
 | `get_tech_stack` | Return info about the bot's own stack |
+| `get_uptime` | Show how long the bot has been running |
+| `get_snow_emergency` | Current Minneapolis snow emergency status |
 | `get_current_date` / `get_current_time_for_timezone` | Date/time utilities |
+
+---
+
+## HTTP API
+
+A Hono server runs on port 8586 alongside the bot.
+
+### `GET /health`
+
+Returns current uptime — no auth required.
+
+```bash
+curl http://localhost:8586/health
+# {"uptime":"2h 15m 4s","started_at":"2026-03-14T20:28:04.000Z"}
+```
+
+### `POST /webhook`
+
+Post a message directly to botland. Requires HMAC-SHA256 signature.
+
+```bash
+SECRET=your_webhook_secret
+BODY='{"message":"hello from webhook"}'
+SIG="sha256=$(echo -n "$BODY" | openssl dgst -sha256 -hmac "$SECRET" -hex | awk '{print $2}')"
+curl -X POST http://localhost:8586/webhook \
+  -H "Content-Type: application/json" \
+  -H "X-Signature-SHA256: $SIG" \
+  -d "$BODY"
+```
+
+Or use the bundled script:
+
+```bash
+bun run webhook "your message here"
+```
+
+---
+
+## Cron Jobs
+
+| Timer | Schedule | Purpose |
+|---|---|---|
+| `zapplebot-snow-cron.timer` | every 30 min | Check Minneapolis snow emergency, post to botland if status changed |
+
+```bash
+systemctl --user status zapplebot-snow-cron.timer
+systemctl --user start zapplebot-snow-cron.service   # run immediately
+```
 
 ---
 
@@ -157,17 +234,9 @@ Discord message
 
 ## Logging
 
-All interactions log to `chat.log` as structured JSON (Winston). Each request gets a unique `chatId`.
+All interactions log to **`chat.log`** as structured JSON (Winston). Both the bot process and cron jobs write to the same file. Each bot request gets a unique `chatId`; cron entries are tagged with `process: "snow-emergency-cron"`.
 
-Key fields:
-
-```json
-{ "chatId": "...", "message": "handle complete", "turns": 2, "toolCallCount": 1, "total_ms": 4200 }
-{ "chatId": "...", "message": "tool call", "tool": "roll_dice", "success": true, "duration_ms": 0 }
-{ "chatId": "...", "message": "llm response", "turn": 1, "finish_reason": "tool_calls", "usage": {...} }
-```
-
-Tail live:
+**View live logs:**
 
 ```bash
 tail -f chat.log | python3 -c "
@@ -176,6 +245,22 @@ for line in sys.stdin:
     e = json.loads(line.strip())
     print(e['timestamp'][:19], e['level'].upper(), e['message'])
 "
+```
+
+**View systemd journal** (stdout/stderr, startup errors):
+
+```bash
+journalctl --user -u zapplebot.service -f
+journalctl --user -u zapplebot-snow-cron.service -n 50
+```
+
+Key log fields:
+
+```json
+{ "chatId": "...", "message": "handle complete", "turns": 2, "toolCallCount": 1, "total_ms": 4200 }
+{ "chatId": "...", "message": "tool call", "tool": "roll_dice", "success": true, "duration_ms": 0 }
+{ "chatId": "...", "message": "llm response", "turn": 1, "finish_reason": "tool_calls", "usage": {...} }
+{ "process": "snow-emergency-cron", "message": "decision: already posted, skipping", "version": "..." }
 ```
 
 ---
@@ -202,6 +287,7 @@ For running llama.cpp as a persistent system service on a shared Mac (survives u
 |---|---|
 | `memory.json` | Long-term user memories with embeddings |
 | `db.json` | Scoreboard data |
+| `cron.json` | Cron job state (last posted snow emergency version) |
 | `chat.log` | Structured interaction logs |
 
 These are gitignored. Back them up if they matter.
