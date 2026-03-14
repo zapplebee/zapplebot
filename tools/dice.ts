@@ -1,4 +1,4 @@
-import { text, tool } from "@lmstudio/sdk";
+import { text, tool } from "../bot-tool";
 import { z } from "zod";
 export const rollDiceTool = tool({
   name: "roll_dice",

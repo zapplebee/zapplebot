@@ -2,21 +2,26 @@ import {
   Client,
   ClientUser,
   GatewayIntentBits,
-  GuildEmoji,
   TextChannel,
   userMention,
 } from "discord.js";
 import { handleMessage } from "./handle-message";
-import type { ChatLike } from "@lmstudio/sdk";
+import type OpenAI from "openai";
 import { makeSender, type SendMessage } from "./sendMessage";
 import { shouldReply } from "./judge";
 import { logger, withCtx } from "./global";
+
 function stripBackticksAroundMentions(text: string): string {
-  // Replace ` <@123> ` or `<@123>` wrapped in backticks
   return text.replace(/`<@!?(\d+)>`/g, "<@$1>");
 }
+
 const token = process.env.DISCORD_TOKEN!;
 const BOTLAND_CHANNEL_ID = process.env.BOTLAND_CHANNEL_ID as string;
+
+const startupMessageFlag = process.argv.indexOf("--startupmessage");
+const startupMessage =
+  (startupMessageFlag !== -1 ? process.argv[startupMessageFlag + 1] : null) ??
+  "⚡️🍎🤖 Zapplebot just came online. I will respond when tagged everywhere, but I might just choose to say something here in botland.";
 
 if (!token) {
   console.error("❌ DISCORD_TOKEN missing in .env");
@@ -33,21 +38,13 @@ const client = new Client({
 
 const sendMessage: SendMessage = makeSender(client);
 
-let botAckEmoji: GuildEmoji | undefined;
-let botFinEmoji: GuildEmoji | undefined;
-let botFailEmoji: GuildEmoji | undefined;
+const EMOJI_ACK = "👀";
+const EMOJI_FIN = "✅";
+const EMOJI_FAIL = "❌";
 
 client.once("clientReady", () => {
-  logger.debug("🤖 zapplebot with tools active in #botland");
-  // sendMessage({
-  //   content:
-  //     "⚡️🍎🤖 Zapplebot just came online. I will respond when tagged everywhere, but I might just choose to say something here in botland.",
-  //   channelId: BOTLAND_CHANNEL_ID,
-  // });
-
-  botFinEmoji = client.emojis.cache.find((e) => e.name === "botfin");
-  botAckEmoji = client.emojis.cache.find((e) => e.name === "botack");
-  botFailEmoji = client.emojis.cache.find((e) => e.name === "botfail");
+  logger.info("zapplebot ready", { botId: client.user?.id, botTag: client.user?.tag });
+  sendMessage({ content: startupMessage, channelId: BOTLAND_CHANNEL_ID });
 });
 
 client.on("messageCreate", async (message) => {
@@ -55,38 +52,50 @@ client.on("messageCreate", async (message) => {
     if (message.author.bot) return;
 
     const channel = await client.channels.fetch(message.channelId);
-    // Make sure it is text-based
     if (!channel || !(channel instanceof TextChannel)) return;
 
     const messages = await channel.messages.fetch({ limit: 5 });
     const me = client.user as ClientUser;
+    const isMention = message.mentions.users.has(me.id);
 
-    if (!message.mentions.users.has(me.id)) {
-      if (message.channelId !== BOTLAND_CHANNEL_ID) {
-        return false;
-      }
+    logger.debug("message received", {
+      messageId: message.id,
+      channelId: message.channelId,
+      channelName: channel.name,
+      userId: message.author.id,
+      username: message.author.username,
+      isMention,
+      contentPreview: message.content.slice(0, 120),
+    });
+
+    if (!isMention) {
+      if (message.channelId !== BOTLAND_CHANNEL_ID) return;
+
+      const judgeStart = Date.now();
       const autoReply = await shouldReply(messages);
-      if (!autoReply) {
-        return false;
-      }
-    }
-    if (botAckEmoji) {
-      await message.react(botAckEmoji);
+      logger.debug("auto-reply gate", {
+        channelId: message.channelId,
+        autoReply,
+        duration_ms: Date.now() - judgeStart,
+      });
+
+      if (!autoReply) return;
     }
 
+    await message.react(EMOJI_ACK);
+
+    const start = Date.now();
     try {
-      const chatHistory: ChatLike = messages
+      const chatHistory: OpenAI.Chat.ChatCompletionMessageParam[] = messages
         .filter((e) => e.id !== message.id)
         .reverse()
-        .map((e) => {
-          return {
-            role: e.author.id === me.id ? "assistant" : "user",
-            content:
-              e.author.id === me.id
-                ? e.content
-                : `<@${e.author.id}> says: ${e.content}`,
-          };
-        });
+        .map((e) => ({
+          role: e.author.id === me.id ? "assistant" : "user",
+          content:
+            e.author.id === me.id
+              ? e.content
+              : `<@${e.author.id}> says: ${e.content}`,
+        }));
 
       const cleaned =
         (message.content ?? "")
@@ -105,29 +114,29 @@ client.on("messageCreate", async (message) => {
         toolBlock: llmResp.toolBlock,
         channelId: message.channelId,
       });
-    } catch (err) {
-      if (err instanceof Error) {
-        logger.error(err.message, {
-          cause: err.cause,
-          stack: err.stack,
-          errorName: err.name,
-        });
-      } else {
-        try {
-          logger.error(String(err));
-        } catch {
-          logger.error("Unknown Error");
-        }
-      }
 
-      logger.error(err);
-      if (botFailEmoji) {
-        await message.react(botFailEmoji);
-      }
+      logger.info("response sent", {
+        messageId: message.id,
+        channelId: message.channelId,
+        channelName: channel.name,
+        userId: message.author.id,
+        isMention,
+        hadToolCalls: !!llmResp.toolBlock,
+        replyLength: llmResp.content.length,
+        total_ms: Date.now() - start,
+      });
+    } catch (err) {
+      logger.error("message handler failed", {
+        messageId: message.id,
+        channelId: message.channelId,
+        userId: message.author.id,
+        duration_ms: Date.now() - start,
+        error: err instanceof Error ? err.message : String(err),
+        stack: err instanceof Error ? err.stack : undefined,
+      });
+      await message.react(EMOJI_FAIL);
     } finally {
-      if (botFinEmoji) {
-        await message.react(botFinEmoji);
-      }
+      await message.react(EMOJI_FIN);
     }
   });
 });

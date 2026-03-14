@@ -3,6 +3,9 @@
   "module": "index.ts",
   "type": "module",
   "private": true,
+  "scripts": {
+    "bot": "bun run index.ts"
+  },
   "devDependencies": {
     "@types/bun": "latest"
   },
@@ -15,7 +18,9 @@
     "discord.js": "^14.24.2",
     "hono": "^4.10.4",
     "lowdb": "^7.0.1",
+    "openai": "^6.29.0",
     "winston": "^3.18.3",
-    "zod": "3"
+    "zod": "3",
+    "zod-to-json-schema": "^3.25.1"
   }
 }

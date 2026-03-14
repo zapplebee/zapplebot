@@ -1,4 +1,4 @@
-import { text, tool, type Tool } from "@lmstudio/sdk";
+import { text, tool, type BotTool } from "../bot-tool";
 
 const getCurrentDate = tool({
   name: "get_current_date",
@@ -40,7 +40,7 @@ const getLocation = tool({
   },
 });
 
-export const utilTools: Array<Tool> = [
+export const utilTools: Array<BotTool> = [
   getCurrentDate,
   getLocation,
   getTimeZone,

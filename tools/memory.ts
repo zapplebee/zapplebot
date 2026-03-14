@@ -1,8 +1,10 @@
 // src/tools/memoryTools.ts
-import { text, tool, LMStudioClient } from "@lmstudio/sdk";
+import { text, tool } from "../bot-tool";
 import { z } from "zod";
 import { JSONFilePreset } from "lowdb/node";
 import cosine from "compute-cosine-similarity";
+import { openai } from "../llm-client";
+import { logger } from "../global";
 
 type Memory = {
   date: string;
@@ -15,10 +17,25 @@ type MemoryExternal = {
   summary: string;
 };
 
+const TOP_K = 5;
+
 // A simple append-only memory log
 const db = await JSONFilePreset<Array<Memory>>("memory.json", []);
-const client = new LMStudioClient();
-const model = await client.embedding.model("nomic-embed-text-v1.5");
+
+async function embed(input: string): Promise<number[] | null> {
+  try {
+    const res = await openai.embeddings.create({
+      model: process.env.LLAMA_EMBED_MODEL ?? "local-model",
+      input,
+    });
+    return res.data[0]?.embedding ?? null;
+  } catch (err) {
+    logger.warn("embed failed", {
+      error: err instanceof Error ? err.message : String(err),
+    });
+    return null;
+  }
+}
 
 /**
  * add_persistent_memory
@@ -26,30 +43,21 @@ const model = await client.embedding.model("nomic-embed-text-v1.5");
  */
 export const addPersistentMemoryTool = tool({
   name: "add_persistent_memory",
-  description: text`
-    Store a short, stable memory about the user or environment that will still matter in the future.
-
-    Use this tool **only when** the user provides information that is:
-    - personal preference (e.g., favorite food, preferred way to be addressed)
-    - identity details (e.g., "I'm a teacher", "I live in Minneapolis")
-    - long-term goals
-    - ongoing projects
-
-    **Do NOT** store:
-    - temporary details
-    - things that only matter in this conversation
-    - emotional state that will change moment-to-moment
-
-    Summaries should be very short and factual.
-  `,
+  description: text`Store a stable fact about the user: preferences, identity, goals, or ongoing projects. Do NOT store temporary or session-only info. Keep summaries short and factual.`,
   parameters: {
     summary: z.string().min(1),
   },
   implementation: async ({ summary }) => {
     const date = new Date().toISOString();
-    const { embedding } = await model.embed(summary);
+    const embedding = (await embed(summary)) ?? [];
     db.data.push({ date, summary, embedding });
     await db.write();
+    logger.debug("memory stored", {
+      summary,
+      date,
+      hasEmbedding: embedding.length > 0,
+      totalMemories: db.data.length,
+    });
     return { stored: true, date, summary };
   },
 });
@@ -68,20 +76,38 @@ function meanPool(vecs: number[][]) {
 export async function getRelevantMemories(
   ...chatMessages: Array<string>
 ): Promise<Array<MemoryExternal>> {
-  const MIN_SIM = 0.7; // raise to be stricter, lower to recall more
-  const TOP_K = 5;
+  if (db.data.length === 0) return [];
 
-  const chatEmbeddings = (
-    await Promise.all(chatMessages.map((e) => model.embed(e)))
-  ).map((e) => e.embedding);
+  // Try similarity search if memories have embeddings
+  const embeddedMemories = db.data.filter((m) => m.embedding.length > 0);
+  if (embeddedMemories.length > 0) {
+    try {
+      const chatEmbeddings = (
+        await Promise.all(chatMessages.map(embed))
+      ).filter((e): e is number[] => e !== null);
 
-  const queryVec = meanPool(chatEmbeddings);
-  if (!queryVec.length) return [];
+      if (chatEmbeddings.length > 0) {
+        const queryVec = meanPool(chatEmbeddings);
+        const results = embeddedMemories
+          .map((m) => ({ m, score: cosine(queryVec, m.embedding) || 0 }))
+          .filter(({ score }) => score >= 0.7)
+          .sort((a, b) => b.score - a.score)
+          .slice(0, TOP_K)
+          .map(({ m }) => ({ date: m.date, summary: m.summary }));
+        logger.debug("memory retrieval", { method: "similarity", count: results.length });
+        return results;
+      }
+    } catch (err) {
+      logger.warn("similarity retrieval failed, falling back to recency", {
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
 
-  return db.data
-    .map((m) => ({ m, score: cosine(queryVec, m.embedding) || 0 }))
-    .filter(({ score }) => score >= MIN_SIM)
-    .sort((a, b) => b.score - a.score)
-    .slice(0, TOP_K)
-    .map(({ m }) => ({ date: m.date, summary: m.summary }));
+  // Fallback: return the most recent memories
+  const results = db.data
+    .slice(-TOP_K)
+    .map((m) => ({ date: m.date, summary: m.summary }));
+  logger.debug("memory retrieval", { method: "recency", count: results.length });
+  return results;
 }
