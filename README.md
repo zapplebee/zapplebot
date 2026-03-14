@@ -1,146 +1,207 @@
-# Zapplebot
+# Zapplebot ⚡️🍎🤖
 
-Zapplebot is a **Discord bot** powered by **Qwen3** running locally through **LM Studio**, implemented in **Bun + TypeScript**.  
-It responds to mentions in Discord, can call tools to take real actions, and maintains a small persistent memory to stay consistent between conversations.
+A Discord bot for small community servers (~30 users). Responds to mentions, calls tools autonomously, and maintains persistent per-user memory.
 
-This bot is built for small community servers (like ours with ~30 people).  
-It is **cute, concise, and friendly.**
-
-## ✨ Features
-
-| Feature                 | Description                                                                                   |
-| ----------------------- | --------------------------------------------------------------------------------------------- |
-| **LLM Responses**       | Uses Qwen3 (via LM Studio) to reply in natural language.                                      |
-| **Tool Calling**        | The model can call functions to update a scoreboard, store memory, run logic, etc.            |
-| **Persistent Memory**   | The bot remembers _long-term_ user preferences (stored in `memory.json`).                     |
-| **Scoreboard System**   | Users can gain/lose points; the scoreboard is stored in `db.json`.                            |
-| **Context Awareness**   | The bot can pull _recent message history_ in the channel for better conversational grounding. |
-| **Logging & Debugging** | Each interaction gets a unique `chatId` and structured logs (Winston).                        |
-| **Safe Mentions**       | Backtick-stripped mentions + controlled `allowedMentions` to prevent accidental pings.        |
-
-## 🧩 Tech Stack
-
-- Runtime: **Bun**
-- Bot: **discord.js**
-- LLM: **Qwen3 via LM Studio SDK**
-- Tool System: **@lmstudio/sdk** tool calling
-- Data: **lowdb** JSON file persistence
-- Validation: **zod**
-- Logging: **winston**
+Runs on **Bun + TypeScript** with a local or cloud LLM backend.
 
 ---
 
-## 🚀 Running the Bot
+## Tech Stack
 
-### 1. Install Dependencies
+| Layer | What |
+|---|---|
+| Runtime | Bun |
+| Bot | discord.js |
+| LLM | llama.cpp (local) · OpenAI · Claude (cloud) |
+| Tool Schema | zod + zod-to-json-schema |
+| Memory | lowdb (JSON flat file) |
+| Logging | Winston (structured JSON → `chat.log`) |
+
+---
+
+## Quick Start
+
+### 1. Install dependencies
 
 ```bash
 bun install
 ```
 
-### 2. Start LM Studio & load the model
+### 2. Set up the LLM backend
 
-Open LM Studio → Load & Run:
+**Option A — Local (llama.cpp)**
 
+```bash
+# Install llama.cpp
+# Linux: build from source (see MAC_MINI_SETUP.md for macOS)
+# Then start the server:
+llama-server \
+  -m /path/to/model.gguf \
+  --host 127.0.0.1 \
+  --port 8888 \
+  --api-key yourkey \
+  --parallel 1 \
+  -c 4096 \
+  -ngl 99   # GPU offload — omit if CPU-only
 ```
-qwen/qwen3-4b-2507
+
+Or use the included systemd service (Linux):
+
+```bash
+# edit ~/.config/systemd/user/llama-server.service
+systemctl --user enable --now llama-server
 ```
 
-Make sure **Developer Tools → Server** is enabled (default `localhost:1234`).
+**Option B — Cloud**
 
-### 3. Create `.env` file
+Set `LLM_BACKEND=openai` or `LLM_BACKEND=claude` in `.env` (see Environment Variables below).
 
-```
-DISCORD_TOKEN=your_bot_token_here
+### 3. Create `.env`
+
+```env
+# Discord
+DISCORD_TOKEN=your_bot_token
+DISCORD_CLIENT_ID=your_client_id
+BOTLAND_CHANNEL_ID=channel_id_for_unprompted_replies
+
+# LLM backend: llama | openai | claude  (default: llama)
+LLM_BACKEND=llama
+
+# llama.cpp (used when LLM_BACKEND=llama)
+LLAMA_BASE_URL=http://127.0.0.1:8888
+LLAMA_API_KEY=yourkey
+LLAMA_MODEL=local-model
+
+# OpenAI (used when LLM_BACKEND=openai)
+OPENAI_API_KEY=sk-...
+OPENAI_MODEL=gpt-4o-mini
+
+# Claude / Anthropic (used when LLM_BACKEND=claude)
+ANTHROPIC_API_KEY=sk-ant-...
+CLAUDE_MODEL=claude-haiku-4-5-20251001
+
+# GitHub (for github issues tool)
+GH_PAT=github_pat_...
 ```
 
 ### 4. Run the bot
 
 ```bash
-bun index.ts
+bun run bot
+```
+
+With a custom startup message (sent to botland on connect):
+
+```bash
+bun run bot -- --startupmessage "Hey, I'm back online."
 ```
 
 ---
 
-## 💬 Using the Bot
+## Switching LLM Backends
 
-Mention it in Discord:
-
-```
-@Zapplebot what's the score look like today?
-```
+Change `LLM_BACKEND` in `.env` and restart the bot. Claude Code slash commands are available:
 
 ```
-@Zapplebot give @username +2 party points
+/use-haiku   # switch to Claude Haiku
+/use-llama   # switch back to local llama.cpp
 ```
-
-```
-@Zapplebot remember that I like pineapple pizza
-```
-
-It will:
-
-- Read recent chat,
-- Decide whether to call a tool,
-- Reply concisely,
-- And tell you if it used a tool.
 
 ---
 
-## 🛠 Tools
+## Tools
 
-| Name                    | Purpose                                        |
-| ----------------------- | ---------------------------------------------- |
-| `roll_dice`             | Roll dice                                      |
-| `update_score_board`    | Give/take points from users.                   |
-| `get_score_board`       | Print the full scoreboard.                     |
-| `add_persistent_memory` | Save long-term personality or preference info. |
-| `get_persistent_memory` | Recall all memories.                           |
-| _(more coming)_         | CLI shell actions, embed renderers, etc.       |
+The bot calls these autonomously — no slash commands needed.
 
-Zapplebot calls these tools **automatically** — you don’t need commands.
-
----
-
-## 🧠 Persistent Memory Rules
-
-Memory is only written when information is:
-
-- Stable
-- Long-lived
-- Relevant in future conversations
-
-It **does not** store:
-
-- Things said once
-- Emotional state
-
-This prevents "memory spam" and keeps the bot from drifting.
+| Tool | What it does |
+|---|---|
+| `roll_dice` | Roll any dice notation (e.g. 4d6) |
+| `update_score_board` | Give or take points from a user |
+| `get_score_board` | Show all scores |
+| `score_board_score_names` | List available score categories |
+| `add_persistent_memory` | Save a long-term fact about a user |
+| `search_wikipedia` | Look up a topic |
+| `run_typescript_javascript` | Execute code in a sandboxed Docker container |
+| `get_github_issues` | Fetch open issues from a GitHub repo |
+| `get_tech_stack` | Return info about the bot's own stack |
+| `get_current_date` / `get_current_time_for_timezone` | Date/time utilities |
 
 ---
 
-## 🧪 Debugging
+## How It Works
 
-Each message interaction logs to `chat.log` with a unique `chatId`:
+```
+Discord message
+  → isMention? → yes → handle immediately
+  → in botland? → judge LLM decides if bot should reply
+      → handleMessage()
+          → fetch relevant memories (cosine similarity or recency fallback)
+          → agentic tool loop (calls tools until finish_reason=stop)
+          → send reply + optional tool trace block
+```
+
+**Agentic loop**: the bot can call multiple tools in sequence before replying. Each turn is logged with timing, token usage, and tool results.
+
+**Judge**: a fast single-call to the LLM (max 20 tokens) to gate unprompted replies in botland. Returns `{"should_reply": true/false}`.
+
+---
+
+## Memory
+
+- Stored in `memory.json` via lowdb.
+- Retrieval uses cosine similarity on embeddings when available, falls back to most-recent-5.
+- The bot only stores stable, long-lived facts (preferences, identity, ongoing projects).
+- Not stored: one-off statements, emotional state, session-only context.
+
+---
+
+## Logging
+
+All interactions log to `chat.log` as structured JSON (Winston). Each request gets a unique `chatId`.
+
+Key fields:
 
 ```json
-{
-  "chatId": "9f3a1b27d44e8c50",
-  "role": "assistant",
-  "content": "Sure thing!",
-  "toolCallRequests": [],
-  "toolCallResults": []
-}
+{ "chatId": "...", "message": "handle complete", "turns": 2, "toolCallCount": 1, "total_ms": 4200 }
+{ "chatId": "...", "message": "tool call", "tool": "roll_dice", "success": true, "duration_ms": 0 }
+{ "chatId": "...", "message": "llm response", "turn": 1, "finish_reason": "tool_calls", "usage": {...} }
 ```
 
-Use this to:
+Tail live:
 
-- Reconstruct chat
-- See which tools were called
-- Diagnose unexpected model behavior
+```bash
+tail -f chat.log | python3 -c "
+import sys, json
+for line in sys.stdin:
+    e = json.loads(line.strip())
+    print(e['timestamp'][:19], e['level'].upper(), e['message'])
+"
+```
 
 ---
 
-## 📦 License
+## Testing
 
-MIT — do whatever, just don’t be evil.
+```bash
+bun test integration.test.ts
+```
+
+Tests cover: tool schema validation, individual tool implementations, full `handleMessage` tool loop, and judge decisions. Timeouts are long (300s) to accommodate CPU inference.
+
+---
+
+## Mac Mini Setup
+
+For running llama.cpp as a persistent system service on a shared Mac (survives user switching), see **[MAC_MINI_SETUP.md](./MAC_MINI_SETUP.md)**.
+
+---
+
+## Persistence Files
+
+| File | Contents |
+|---|---|
+| `memory.json` | Long-term user memories with embeddings |
+| `db.json` | Scoreboard data |
+| `chat.log` | Structured interaction logs |
+
+These are gitignored. Back them up if they matter.

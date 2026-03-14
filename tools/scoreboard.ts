@@ -30,7 +30,7 @@ E.g. give <@535097720785076245> +3 party_points → { username: "<@5350977207850
   parameters: {
     username: z
       .string()
-      .regex(/^<@\d+>$/, "username MUST be in the format <@1234567890>"),
+      .regex(/^<@[0-9]+>$/, "username MUST be in the format <@1234567890>"),
     scoreDelta: z.number().int(),
     scoreName: z.string(),
   },
