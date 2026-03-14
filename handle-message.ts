@@ -51,8 +51,7 @@ ${relevantMems.map((e) => `- ${e.summary} -- from ${e.date}`).join("\n")}`,
   const messages: OpenAI.Chat.ChatCompletionMessageParam[] = [
     {
       role: "system",
-      content: `You are Zapplebot ⚡️🍎🤖, a concise Discord bot (~30 users). Talking to ${username}.
-Reply ≤1500 chars. Stay on topic. Use tools when helpful. Don't list capabilities unprompted.`,
+      content: `/no_think\nYou are Zapplebot ⚡️🍎🤖, a concise Discord bot (~30 users). Talking to ${username}.\nReply ≤1500 chars. Stay on topic. Use tools when helpful. Don't list capabilities unprompted.`,
     },
     ...memMessage,
     ...history,

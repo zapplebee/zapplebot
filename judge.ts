@@ -29,8 +29,7 @@ import { tools } from "./tools";
 import { openai, MODEL } from "./llm-client";
 import { logger } from "./global";
 
-const SYSTEM_PROMPT = `You are a judge for Zapplebot, a Discord bot with tools: dice, scores, wikipedia, code sandbox, github issues, memory.
-Output {"should_reply": true} only if the bot can clearly add value. Default to {"should_reply": false} for chatter, jokes, or personal conversation.`;
+const SYSTEM_PROMPT = `/no_think\nYou are a judge for Zapplebot, a Discord bot with tools: dice, scores, wikipedia, code sandbox, github issues, memory.\nOutput {"should_reply": true} only if the bot can clearly add value. Default to {"should_reply": false} for chatter, jokes, or personal conversation.`;
 
 export async function shouldReply(
   messages: Collection<string, Message<true>>
