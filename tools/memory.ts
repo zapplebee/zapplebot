@@ -10,6 +10,7 @@ type Memory = {
   date: string;
   summary: string;
   embedding: number[];
+  sourceKey?: string;
 };
 
 type MemoryExternal = {
@@ -37,28 +38,64 @@ async function embed(input: string): Promise<number[] | null> {
   }
 }
 
+export async function storePersistentMemory(summary: string, sourceKey?: string) {
+  const existing = sourceKey
+    ? db.data.find((m) => m.sourceKey === sourceKey)
+    : undefined;
+
+  if (existing) {
+    return { stored: false, duplicate: true, date: existing.date, summary: existing.summary };
+  }
+
+  const date = new Date().toISOString();
+  const embedding = (await embed(summary)) ?? [];
+  db.data.push({ date, summary, embedding, sourceKey });
+  await db.write();
+  logger.debug("memory stored", {
+    summary,
+    date,
+    hasEmbedding: embedding.length > 0,
+    totalMemories: db.data.length,
+    sourceKey,
+  });
+  return { stored: true, duplicate: false, date, summary };
+}
+
+export async function removePersistentMemoryBySourceKey(sourceKey: string) {
+  const before = db.data.length;
+  db.data = db.data.filter((m) => m.sourceKey !== sourceKey);
+
+  if (db.data.length === before) {
+    return { removed: false, sourceKey };
+  }
+
+  await db.write();
+  logger.debug("memory removed", {
+    sourceKey,
+    totalMemories: db.data.length,
+  });
+  return { removed: true, sourceKey };
+}
+
 /**
  * add_persistent_memory
  * LLM should call this ONLY when the user shares stable, lasting info.
  */
 export const addPersistentMemoryTool = tool({
   name: "add_persistent_memory",
-  description: text`Store a stable fact about the user: preferences, identity, goals, or ongoing projects. Do NOT store temporary or session-only info. Keep summaries short and factual.`,
+  description: text`
+    Store a durable fact that will likely help in future conversations.
+    Be eager to use this when the user reveals a stable preference, identity detail, relationship, recurring joke, biography fact,
+    ongoing project, repeated correction, or something they explicitly want remembered.
+    Prefer storing slightly too often over missing an important long-term fact.
+    Do NOT store one-off temporary status updates or fleeting context.
+    Keep summaries short, factual, and written in third person.
+  `,
   parameters: {
     summary: z.string().min(1),
   },
   implementation: async ({ summary }) => {
-    const date = new Date().toISOString();
-    const embedding = (await embed(summary)) ?? [];
-    db.data.push({ date, summary, embedding });
-    await db.write();
-    logger.debug("memory stored", {
-      summary,
-      date,
-      hasEmbedding: embedding.length > 0,
-      totalMemories: db.data.length,
-    });
-    return { stored: true, date, summary };
+    return await storePersistentMemory(summary);
   },
 });
 

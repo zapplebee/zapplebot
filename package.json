@@ -6,7 +6,9 @@
   "scripts": {
     "bot": "bun run index.ts",
     "webhook": "bun run webhook.ts",
-    "cron": "bun run cron.ts"
+    "cron": "bun run cron.ts",
+    "restart-bot": "systemctl --user restart zapplebot.service",
+    "restart-cron": "systemctl --user restart zapplebot-snow-cron.service"
   },
   "devDependencies": {
     "@types/bun": "latest"
@@ -23,6 +25,7 @@
     "lowdb": "^7.0.1",
     "openai": "^6.29.0",
     "winston": "^3.18.3",
+    "yaml": "^2.8.2",
     "zod": "3",
     "zod-to-json-schema": "^3.25.1"
   }

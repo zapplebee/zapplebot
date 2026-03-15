@@ -12,6 +12,9 @@ import { searchTool } from "./wiki";
 import { utilTools } from "./utils";
 import { uptimeTool } from "./uptime";
 import { snowEmergencyTool } from "./snow";
+import { dndCombatTool } from "./dnd";
+import { weatherTool } from "./weather";
+import { velaTool } from "./vela";
 import type { BotTool } from "../bot-tool";
 import { z } from "zod";
 import { zodToJsonSchema } from "zod-to-json-schema";
@@ -31,6 +34,9 @@ export const tools: BotTool[] = [
   searchTool,
   uptimeTool,
   snowEmergencyTool,
+  weatherTool,
+  dndCombatTool,
+  velaTool,
   ...utilTools,
 ];
 

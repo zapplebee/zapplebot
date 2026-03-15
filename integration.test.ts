@@ -113,7 +113,7 @@ describe("handleMessage tool loop", () => {
       let response!: { content: string; toolBlock?: string };
 
       await withCtx(async () => {
-        response = await handleMessage("roll 2d6 for me", "@testuser", []);
+        response = await handleMessage("roll 2d6 for me", { id: "123", mention: "@testuser", displayName: "testuser" }, []);
       });
 
       expect(typeof response.content).toBe("string");
@@ -131,7 +131,7 @@ describe("handleMessage tool loop", () => {
       let response!: { content: string; toolBlock?: string };
 
       await withCtx(async () => {
-        response = await handleMessage("hello!", "@testuser", []);
+        response = await handleMessage("hello!", { id: "123", mention: "@testuser", displayName: "testuser" }, []);
       });
 
       expect(typeof response.content).toBe("string");
@@ -148,7 +148,7 @@ describe("handleMessage tool loop", () => {
       await withCtx(async () => {
         response = await handleMessage(
           "show me the scoreboard",
-          "@testuser",
+          { id: "123", mention: "@testuser", displayName: "testuser" },
           []
         );
       });
@@ -166,7 +166,7 @@ describe("handleMessage tool loop", () => {
       let response!: { content: string; toolBlock?: string };
 
       await withCtx(async () => {
-        response = await handleMessage("what did I just say?", "@testuser", [
+        response = await handleMessage("what did I just say?", { id: "123", mention: "@testuser", displayName: "testuser" }, [
           { role: "user", content: "my favorite color is vermillion" },
           {
             role: "assistant",

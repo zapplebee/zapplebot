@@ -34,7 +34,7 @@ export const db = await JSONFilePreset<CronData>("cron.json", {
 export async function fetchActiveNotice(): Promise<ActiveNotice | null> {
   const res = await fetch(NOTICES_URL);
   if (!res.ok) throw new Error(`Fetch failed: ${res.status}`);
-  const { notices }: { notices: Notice[] } = await res.json();
+  const { notices } = await res.json() as { notices: Notice[] };
 
   const now = Date.now();
   const active = notices

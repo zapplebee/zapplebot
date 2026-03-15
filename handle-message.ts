@@ -1,6 +1,7 @@
+import { stringify as yamlStringify } from "yaml";
 import { tools, openaiTools } from "./tools";
 import { getRelevantMemories } from "./tools/memory";
-import { getCtxId, setCtx, logger } from "./global";
+import { getCtxId, setCtx, logger, convoLogger } from "./global";
 import { openai, MODEL } from "./llm-client";
 import type OpenAI from "openai";
 
@@ -9,14 +10,20 @@ type HandleMessageResponse = {
   toolBlock?: string;
 };
 
+export type UserInfo = {
+  id: string;
+  mention: string;      // <@id> — what the model sees
+  displayName: string;  // human-readable name — logging only
+};
+
 export async function handleMessage(
   prompt: string,
-  username: string,
+  userInfo: UserInfo,
   history: Array<OpenAI.Chat.ChatCompletionMessageParam>
 ): Promise<HandleMessageResponse> {
   const chatId = getCtxId();
   const start = Date.now();
-  const subLogger = logger.child({ chatId, user: username });
+  const subLogger = logger.child({ chatId, user: userInfo.mention });
 
   subLogger.debug("handle start", {
     historySize: history.length,
@@ -48,15 +55,36 @@ ${relevantMems.map((e) => `- ${e.summary} -- from ${e.date}`).join("\n")}`,
         ]
       : [];
 
+  const dndTrigger = prompt.includes("/dnd")
+    ? [
+        {
+          role: "system" as const,
+          content: "The user invoked /dnd. You MUST call the dnd_combat tool immediately before responding.",
+        },
+      ]
+    : [];
+
   const messages: OpenAI.Chat.ChatCompletionMessageParam[] = [
     {
       role: "system",
-      content: `/no_think\nYou are Zapplebot ⚡️🍎🤖, a concise Discord bot (~30 users). Talking to ${username}.\nReply ≤1500 chars. Stay on topic. Use tools when helpful. Don't list capabilities unprompted.`,
+      content: `/no_think\nYou are Zapplebot ⚡️🍎🤖, a concise Discord bot (~30 users). Talking to ${userInfo.mention}.\nReply ≤1500 chars. Stay on topic. Use tools when helpful. Don't list capabilities unprompted.\nBe proactive about memory: when the user reveals a durable fact, preference, relationship, ongoing situation, repeated correction, or something they want remembered, call add_persistent_memory.`,
     },
     ...memMessage,
+    ...dndTrigger,
     ...history,
     { role: "user", content: prompt },
   ];
+
+  convoLogger.info("request", {
+    chatId,
+    model: MODEL,
+    user: {
+      id: userInfo.id,
+      mention: userInfo.mention,
+      displayName: userInfo.displayName,
+    },
+    messages,
+  });
 
   let reply = "";
   const toolCallRequests: unknown[] = [];
@@ -135,15 +163,34 @@ ${relevantMems.map((e) => `- ${e.summary} -- from ${e.date}`).join("\n")}`,
     total_ms: Date.now() - start,
   });
 
-  let toolBlock: string | undefined;
-  if (toolCallRequests.length > 0 || toolCallResults.length > 0) {
-    toolBlock = `//tools
-// requests
-${JSON.stringify(toolCallRequests, null, 2)}
+  convoLogger.info("response", {
+    chatId,
+    model: MODEL,
+    user: {
+      id: userInfo.id,
+      mention: userInfo.mention,
+      displayName: userInfo.displayName,
+    },
+    reply,
+    toolCallRequests,
+    toolCallResults,
+    turns: turn,
+    total_ms: Date.now() - start,
+  });
 
-// responses
-${JSON.stringify(toolCallResults, null, 2)}
-`;
+  let toolBlock: string | undefined;
+  if (toolCallRequests.length > 0) {
+    type TcRequest = { id: string; function: { name: string; arguments: string } };
+    type TcResult = { id: string; result: unknown };
+    const resultById = new Map(
+      (toolCallResults as TcResult[]).map((r) => [r.id, r.result])
+    );
+    const calls = (toolCallRequests as TcRequest[]).map((req) => ({
+      tool: req.function.name,
+      request: JSON.parse(req.function.arguments),
+      response: resultById.get(req.id),
+    }));
+    toolBlock = yamlStringify(calls, { lineWidth: 80 });
   }
 
   setCtx((e) => {

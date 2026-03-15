@@ -1,0 +1,41 @@
+{
+  "combat": {
+    "monsters": [
+      {
+        "id": "goblin-1",
+        "type": "goblin",
+        "hp": 0,
+        "maxHp": 5
+      },
+      {
+        "id": "goblin-2",
+        "type": "goblin",
+        "hp": 6,
+        "maxHp": 6
+      },
+      {
+        "id": "goblin-3",
+        "type": "goblin",
+        "hp": 0,
+        "maxHp": 6
+      },
+      {
+        "id": "goblin-4",
+        "type": "goblin",
+        "hp": 7,
+        "maxHp": 7
+      }
+    ],
+    "playerAc": 10
+  },
+  "characters": {
+    "535097720785076245": {
+      "name": "Reggie",
+      "ac": 18,
+      "hp": 30,
+      "maxHp": 30,
+      "attackBonus": 6,
+      "damage": "1d8+3"
+    }
+  }
+}

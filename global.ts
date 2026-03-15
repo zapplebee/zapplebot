@@ -61,3 +61,14 @@ export const logger = winston.createLogger({
     new winston.transports.File({ filename: "chat.log" }),
   ],
 });
+
+export const convoLogger = winston.createLogger({
+  level: "info",
+  format: winston.format.combine(
+    winston.format.timestamp(),
+    winston.format.json()
+  ),
+  transports: [
+    new winston.transports.File({ filename: "convo.log" }),
+  ],
+});

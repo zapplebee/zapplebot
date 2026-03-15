@@ -13,7 +13,7 @@
  *
  * Requirements to preserve:
  *   - Must send to text-capable channels only.
- *   - If toolBlock is provided, attach it as a `.ts` file named **exactly `toolcalls.ts`**.
+ *   - If toolBlock is provided, attach it as a `.ts` file named **exactly `toolcalls.yaml`**.
  *   - Must include allowedMentions exactly as shown below:
  *         allowedMentions: { users: [], parse: ["roles", "users", "everyone"] }
  *   - Must not assume channel is always TextChannel; must use type narrowing.
@@ -21,7 +21,7 @@
  *
  * If modifying:
  *   - DO NOT remove or weaken the sendability guard.
- *   - DO NOT change the filename from `toolcalls.ts`.
+ *   - DO NOT change the filename from `toolcalls.yaml`.
  *   - DO NOT inline toolBlock into message content — it must remain an attachment.
  *
  * Safe areas to modify:
@@ -75,7 +75,7 @@ export function makeSender(client: Client) {
     const files = toolBlock
       ? [
           {
-            name: "toolcalls.ts", // <-- always this exact filename
+            name: "toolcalls.yaml", // <-- always this exact filename
             attachment: Buffer.from(toolBlock, "utf8"),
           },
         ]

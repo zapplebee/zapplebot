@@ -2,15 +2,23 @@ import {
   Client,
   ClientUser,
   GatewayIntentBits,
+  Partials,
   TextChannel,
   userMention,
+  type Message,
+  type MessageReaction,
+  type PartialMessageReaction,
+  type PartialUser,
+  type User,
 } from "discord.js";
 import { handleMessage } from "./handle-message";
 import type OpenAI from "openai";
 import { makeSender, type SendMessage } from "./sendMessage";
 import { shouldReply } from "./judge";
-import { logger, withCtx } from "./global";
+import { getCtx, logger, withCtx } from "./global";
 import { startServer } from "./server";
+import { registerSlashCommands, handleInteraction } from "./interactions";
+import { removePersistentMemoryBySourceKey, storePersistentMemory } from "./tools/memory";
 
 function stripBackticksAroundMentions(text: string): string {
   return text.replace(/`<@!?(\d+)>`/g, "<@$1>");
@@ -33,8 +41,10 @@ const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMessages,
+    GatewayIntentBits.GuildMessageReactions,
     GatewayIntentBits.MessageContent,
   ],
+  partials: [Partials.Channel, Partials.Message, Partials.Reaction],
 });
 
 const sendMessage: SendMessage = makeSender(client);
@@ -42,11 +52,86 @@ const sendMessage: SendMessage = makeSender(client);
 const EMOJI_ACK = "👀";
 const EMOJI_FIN = "✅";
 const EMOJI_FAIL = "❌";
+const EMOJI_WHISPER = "🙉";
+const EMOJI_MEMORY = "📌";
 
-client.once("clientReady", () => {
+function truncateForMemory(value: string, maxLength = 240): string {
+  const trimmed = value.replace(/\s+/g, " ").trim();
+  if (trimmed.length <= maxLength) return trimmed;
+  return `${trimmed.slice(0, maxLength)}...`;
+}
+
+function memorySummaryFromMessage(message: Message): string | null {
+  const content = truncateForMemory(message.content ?? "");
+  if (!content) return null;
+  return `<@${message.author.id}> says: ${content}`;
+}
+
+client.once("clientReady", async () => {
   logger.info("zapplebot ready", { botId: client.user?.id, botTag: client.user?.tag });
+  await registerSlashCommands(client);
   sendMessage({ content: startupMessage, channelId: BOTLAND_CHANNEL_ID });
   startServer(sendMessage);
+});
+
+client.on("interactionCreate", async (interaction) => {
+  try {
+    await handleInteraction(interaction);
+  } catch (err) {
+    logger.error("interaction handler failed", {
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
+});
+
+client.on("messageReactionAdd", async (reaction: MessageReaction | PartialMessageReaction, user: User | PartialUser) => {
+  if (user.bot) return;
+
+  const emoji = reaction.emoji.name;
+  if (emoji !== EMOJI_MEMORY) return;
+
+  const fullReaction = reaction.partial ? await reaction.fetch() : reaction;
+  const message = fullReaction.message.partial ? await fullReaction.message.fetch() : fullReaction.message;
+
+  if (message.author?.bot) return;
+
+  const summary = memorySummaryFromMessage(message);
+  if (!summary) return;
+
+  const result = await storePersistentMemory(summary, `discord-message:${message.id}`);
+  if (!result.stored && result.duplicate) return;
+
+  logger.info("memory stored from pin reaction", {
+    messageId: message.id,
+    channelId: message.channelId,
+    reactingUserId: user.id,
+    summary,
+  });
+});
+
+client.on("messageReactionRemove", async (reaction: MessageReaction | PartialMessageReaction, user: User | PartialUser) => {
+  if (user.bot) return;
+
+  const emoji = reaction.emoji.name;
+  if (emoji !== EMOJI_MEMORY) return;
+
+  const fullReaction = reaction.partial ? await reaction.fetch() : reaction;
+  const message = fullReaction.message.partial ? await fullReaction.message.fetch() : fullReaction.message;
+
+  if (message.author?.bot) return;
+
+  const users = await fullReaction.users.fetch();
+  const nonBotPinsRemaining = users.some((u) => !u.bot);
+  if (nonBotPinsRemaining) return;
+
+  const result = await removePersistentMemoryBySourceKey(`discord-message:${message.id}`);
+  if (!result.removed) return;
+
+  logger.info("memory removed from pin reaction", {
+    messageId: message.id,
+    channelId: message.channelId,
+    removingUserId: user.id,
+  });
 });
 
 client.on("messageCreate", async (message) => {
@@ -84,12 +169,18 @@ client.on("messageCreate", async (message) => {
       if (!autoReply) return;
     }
 
+    if (message.content.includes("/whisper")) {
+      await message.react(EMOJI_WHISPER);
+      return;
+    }
+
     await message.react(EMOJI_ACK);
 
     const start = Date.now();
     try {
       const chatHistory: OpenAI.Chat.ChatCompletionMessageParam[] = messages
         .filter((e) => e.id !== message.id)
+        .filter((e) => !e.content.includes("/whisper"))
         .reverse()
         .map((e) => ({
           role: e.author.id === me.id ? "assistant" : "user",
@@ -107,9 +198,21 @@ client.on("messageCreate", async (message) => {
 
       const llmResp = await handleMessage(
         cleaned,
-        userMention(message.author.id),
+        {
+          id: message.author.id,
+          mention: userMention(message.author.id),
+          displayName: message.member?.displayName ?? message.author.username,
+        },
         chatHistory
       );
+
+      const ctx = getCtx();
+      const toolCallRequests = Array.isArray(ctx.toolCallRequests) ? ctx.toolCallRequests as Array<{ function?: { name?: string } }> : [];
+      const storedMemory = toolCallRequests.some((tc) => tc.function?.name === "add_persistent_memory");
+
+      if (storedMemory) {
+        await message.react(EMOJI_MEMORY);
+      }
 
       if (!llmResp.content.trim()) return;
 

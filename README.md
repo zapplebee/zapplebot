@@ -102,6 +102,10 @@ systemctl --user restart zapplebot.service
 # Other controls
 systemctl --user stop zapplebot.service
 systemctl --user status zapplebot.service
+
+# Package scripts
+bun run restart-bot
+bun run restart-cron
 ```
 
 Service files live in `~/.config/systemd/user/`.
@@ -153,6 +157,8 @@ The bot calls these autonomously — no slash commands needed.
 | `get_tech_stack` | Return info about the bot's own stack |
 | `get_uptime` | Show how long the bot has been running |
 | `get_snow_emergency` | Current Minneapolis snow emergency status |
+| `get_weather` | Current Minneapolis weather plus observed-vs-projected precipitation today |
+| `run_vela_cli` | Inspect Vela CI/CD state via the local Vela CLI |
 | `get_current_date` / `get_current_time_for_timezone` | Date/time utilities |
 
 ---
@@ -227,7 +233,9 @@ Discord message
 
 - Stored in `memory.json` via lowdb.
 - Retrieval uses cosine similarity on embeddings when available, falls back to most-recent-5.
-- The bot only stores stable, long-lived facts (preferences, identity, ongoing projects).
+- The bot stores stable, long-lived facts (preferences, identity, ongoing projects, repeated corrections, explicit remember-this statements).
+- If the bot stores a memory during a reply, it reacts to the triggering message with `📌`.
+- Users can also add `📌` to a message to store that message as memory; if all non-bot `📌` reactions are removed, that synced memory is deleted.
 - Not stored: one-off statements, emotional state, session-only context.
 
 ---
