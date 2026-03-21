@@ -22,7 +22,7 @@ export const snowEmergencyTool = tool({
       message: active.text,
       publishDate: active.publishDate,
       expireDate: active.expireDate,
-      lastNotifiedVersion: db.data.lastSnowEmergencyVersion,
+      lastNotifiedText: db.data.lastSnowEmergencyText,
       moreInfo: PARKING_URL,
     };
   },

@@ -24,11 +24,11 @@ export type ActiveNotice = {
 };
 
 export type CronData = {
-  lastSnowEmergencyVersion: string | null;
+  lastSnowEmergencyText: string | null;
 };
 
 export const db = await JSONFilePreset<CronData>("cron.json", {
-  lastSnowEmergencyVersion: null,
+  lastSnowEmergencyText: null,
 });
 
 export async function fetchActiveNotice(): Promise<ActiveNotice | null> {
