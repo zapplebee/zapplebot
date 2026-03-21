@@ -35,7 +35,7 @@ export async function checkSnowEmergency(): Promise<void> {
     expireDate: active.expireDate,
   });
 
-  if (active.version === db.data.lastSnowEmergencyVersion) {
+  if (active.text === db.data.lastSnowEmergencyText) {
     logger.info("decision: already posted, skipping", {
       ...ctx,
       version: active.version,
@@ -49,7 +49,7 @@ export async function checkSnowEmergency(): Promise<void> {
 
   await sendWebhook(message);
 
-  db.data.lastSnowEmergencyVersion = active.version;
+  db.data.lastSnowEmergencyText = active.text;
   await db.write();
 
   logger.info("decision: posted snow emergency update", {
