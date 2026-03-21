@@ -166,6 +166,179 @@ describe("shouldReply", () => {
   );
 });
 
+// ── tool coverage: one test per tool not covered by log replay ────────────────
+
+const BOT_USER = { id: "123", mention: "@testuser", displayName: "testuser" };
+const REAL_USER_MENTION = "<@535097720785076245>";
+
+describe("tool coverage", () => {
+  test("model calls follow_wikipedia_link when given a bare Wikipedia URL", async () => {
+    let result!: { content: string; toolBlock?: string };
+    await withCtx(async () => {
+      result = await handleMessage(
+        "https://en.wikipedia.org/wiki/Thomas_Edison",
+        BOT_USER,
+        []
+      );
+    });
+    expect(result.toolBlock).toContain("follow_wikipedia_link");
+  });
+
+  test("model calls add_persistent_memory when told to remember something", async () => {
+    let result!: { content: string; toolBlock?: string };
+    await withCtx(async () => {
+      result = await handleMessage(
+        "remember that I prefer d20 rolls for everything zapplebot",
+        BOT_USER,
+        []
+      );
+    });
+    expect(result.toolBlock).toContain("add_persistent_memory");
+  });
+
+  test("model calls update_score_board when asked to award points", async () => {
+    let result!: { content: string; toolBlock?: string };
+    await withCtx(async () => {
+      result = await handleMessage(
+        `give ${REAL_USER_MENTION} +5 wins on the scoreboard`,
+        BOT_USER,
+        []
+      );
+    });
+    expect(result.toolBlock).toContain("score_board");
+  });
+
+  test("model calls score_board_score_names when asked about scoring categories", async () => {
+    let result!: { content: string; toolBlock?: string };
+    await withCtx(async () => {
+      result = await handleMessage(
+        "what point categories are on the scoreboard zapplebot?",
+        BOT_USER,
+        []
+      );
+    });
+    expect(result.toolBlock).toContain("score_board");
+  });
+
+  test("model calls get_tech_stack when asked what it is built with", async () => {
+    let result!: { content: string; toolBlock?: string };
+    await withCtx(async () => {
+      result = await handleMessage(
+        "what are you built with and what model are you running zapplebot?",
+        BOT_USER,
+        []
+      );
+    });
+    expect(result.toolBlock).toContain("get_tech_stack");
+  });
+
+  test("model calls get_uptime when asked how long it has been running", async () => {
+    let result!: { content: string; toolBlock?: string };
+    await withCtx(async () => {
+      result = await handleMessage(
+        "how long have you been running zapplebot? when did you last restart?",
+        BOT_USER,
+        []
+      );
+    });
+    expect(result.toolBlock).toContain("get_uptime");
+  });
+
+  test("model calls get_current_date when asked today's date", async () => {
+    let result!: { content: string; toolBlock?: string };
+    await withCtx(async () => {
+      result = await handleMessage(
+        "what is today's exact date zapplebot?",
+        BOT_USER,
+        []
+      );
+    });
+    expect(result.toolBlock).toContain("get_current_date");
+  });
+
+  test("model calls get_time_zone when asked its timezone", async () => {
+    let result!: { content: string; toolBlock?: string };
+    await withCtx(async () => {
+      result = await handleMessage(
+        "what timezone are you running in zapplebot?",
+        BOT_USER,
+        []
+      );
+    });
+    expect(result.toolBlock).toContain("get_time_zone");
+  });
+
+  test("model calls get_location when asked where it is hosted", async () => {
+    let result!: { content: string; toolBlock?: string };
+    await withCtx(async () => {
+      result = await handleMessage(
+        "where are you hosted zapplebot? what city?",
+        BOT_USER,
+        []
+      );
+    });
+    expect(result.toolBlock).toContain("get_location");
+  });
+
+  test("model calls run_typescript_javascript when asked to execute code", async () => {
+    let result!: { content: string; toolBlock?: string };
+    await withCtx(async () => {
+      result = await handleMessage(
+        "run this typescript code for me: console.log(1 + 2 + 3)",
+        BOT_USER,
+        []
+      );
+    });
+    expect(result.toolBlock).toContain("run_typescript_javascript");
+  });
+
+  test("model calls readBugs when asked about open github issues", async () => {
+    let result!: { content: string; toolBlock?: string };
+    await withCtx(async () => {
+      result = await handleMessage(
+        "show me the open issues in the zapplebot github repo",
+        BOT_USER,
+        []
+      );
+    });
+    expect(result.toolBlock).toContain("readBugs");
+  });
+
+  test("model calls readRepoFile when asked to read a file from the repo", async () => {
+    let result!: { content: string; toolBlock?: string };
+    await withCtx(async () => {
+      result = await handleMessage(
+        "read the tools/dice.ts file from the zapplebot repo",
+        BOT_USER,
+        []
+      );
+    });
+    expect(result.toolBlock).toContain("readRepoFile");
+  });
+
+  test("model calls run_vela_cli when asked about vela builds", async () => {
+    let result!: { content: string; toolBlock?: string };
+    await withCtx(async () => {
+      result = await handleMessage(
+        "ok then what's building in vela?",
+        BOT_USER,
+        [
+          {
+            role: "user",
+            content: "what is building in vela zapplebot?",
+          },
+          {
+            role: "assistant",
+            content:
+              "I don't have specific information about what is currently being built in Vela. However, I can tell you that the Vela CLI supports commands like get, view, validate.",
+          },
+        ]
+      );
+    });
+    expect(result.toolBlock).toContain("run_vela_cli");
+  });
+});
+
 // ── chat log replay ───────────────────────────────────────────────────────────
 
 type LogEntry = Record<string, any>;
