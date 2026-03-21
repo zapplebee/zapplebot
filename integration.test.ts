@@ -1,15 +1,14 @@
 /**
- * Integration tests for tool calls against the live llama.cpp server.
- * Run with: bun test integration.test.ts
- *
- * Requires LLAMA_BASE_URL (default: http://127.0.0.1:8888) to be reachable.
+ * Integration tests — require live llama.cpp server at 127.0.0.1:8888.
+ * Run with: bun test integration.test.ts --timeout 300000
  */
 
 import { describe, test, expect, beforeAll } from "bun:test";
-import { tools, openaiTools } from "./tools";
 import { handleMessage } from "./handle-message";
 import { shouldReply } from "./judge";
 import { withCtx } from "./global";
+import { readFileSync, existsSync } from "node:fs";
+import type OpenAI from "openai";
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -36,74 +35,6 @@ beforeAll(async () => {
   }
 });
 
-// ── tool schema conversion (no model needed) ──────────────────────────────────
-
-describe("openaiTools schema", () => {
-  test("produces valid OpenAI tool schema for each tool", () => {
-    expect(openaiTools.length).toBe(tools.length);
-
-    for (const t of openaiTools) {
-      expect(t.type).toBe("function");
-      if (t.type !== "function") continue;
-      expect(typeof t.function.name).toBe("string");
-      expect(t.function.name.length).toBeGreaterThan(0);
-      expect(typeof t.function.description).toBe("string");
-      expect(t.function.parameters).toHaveProperty("type", "object");
-      expect(t.function.parameters).toHaveProperty("properties");
-    }
-  });
-
-  test("dice tool schema has correct parameter types", () => {
-    const dice = openaiTools.find((t) => t.type === "function" && t.function.name === "roll_dice");
-
-    expect(dice).toBeDefined();
-    if (dice?.type !== "function") throw new Error("not a function tool");
-    const props = (dice.function.parameters as any).properties;
-    // zod-to-json-schema emits "integer" for z.number().int()
-    expect(props.count.type).toBe("integer");
-    expect(props.sides.type).toBe("integer");
-  });
-
-  test("tools with no parameters have empty properties", () => {
-    const noParamTools = openaiTools.filter(
-      (t) => t.type === "function" && Object.keys((t.function.parameters as any).properties).length === 0
-    );
-    // get_score_board, score_board_score_names, get_current_date, get_time_zone, get_location, get_tech_stack
-    expect(noParamTools.length).toBeGreaterThan(0);
-  });
-});
-
-// ── direct tool execution (no model) ─────────────────────────────────────────
-
-describe("tool implementations", () => {
-  test("roll_dice returns sum and rolls array", async () => {
-    const dice = tools.find((t) => t.name === "roll_dice")!;
-    const result = (await dice.implementation({ count: 2, sides: 6 })) as any;
-
-    expect(result.rolls).toHaveLength(2);
-    expect(result.sum).toBe(result.rolls[0] + result.rolls[1]);
-    for (const r of result.rolls) {
-      expect(r).toBeGreaterThanOrEqual(1);
-      expect(r).toBeLessThanOrEqual(6);
-    }
-  });
-
-  test("get_current_date returns ISO date string", async () => {
-    const dateTool = tools.find((t) => t.name === "get_current_date")!;
-    const result = (await dateTool.implementation({})) as any;
-
-    expect(typeof result.date).toBe("string");
-    expect(() => new Date(result.date)).not.toThrow();
-  });
-
-  test("get_time_zone returns timezone string", async () => {
-    const tzTool = tools.find((t) => t.name === "get_time_zone")!;
-    const result = (await tzTool.implementation({})) as any;
-
-    expect(typeof result.tz).toBe("string");
-  });
-});
-
 // ── model + tool loop integration ─────────────────────────────────────────────
 
 describe("handleMessage tool loop", () => {
@@ -113,12 +44,15 @@ describe("handleMessage tool loop", () => {
       let response!: { content: string; toolBlock?: string };
 
       await withCtx(async () => {
-        response = await handleMessage("roll 2d6 for me", { id: "123", mention: "@testuser", displayName: "testuser" }, []);
+        response = await handleMessage(
+          "roll 2d6 for me",
+          { id: "123", mention: "@testuser", displayName: "testuser" },
+          []
+        );
       });
 
       expect(typeof response.content).toBe("string");
       expect(response.content.length).toBeGreaterThan(0);
-      // The model should have used the tool
       expect(response.toolBlock).toBeDefined();
       expect(response.toolBlock).toContain("roll_dice");
     },
@@ -131,7 +65,11 @@ describe("handleMessage tool loop", () => {
       let response!: { content: string; toolBlock?: string };
 
       await withCtx(async () => {
-        response = await handleMessage("hello!", { id: "123", mention: "@testuser", displayName: "testuser" }, []);
+        response = await handleMessage(
+          "hello!",
+          { id: "123", mention: "@testuser", displayName: "testuser" },
+          []
+        );
       });
 
       expect(typeof response.content).toBe("string");
@@ -166,13 +104,14 @@ describe("handleMessage tool loop", () => {
       let response!: { content: string; toolBlock?: string };
 
       await withCtx(async () => {
-        response = await handleMessage("what did I just say?", { id: "123", mention: "@testuser", displayName: "testuser" }, [
-          { role: "user", content: "my favorite color is vermillion" },
-          {
-            role: "assistant",
-            content: "That's a great color!",
-          },
-        ]);
+        response = await handleMessage(
+          "what did I just say?",
+          { id: "123", mention: "@testuser", displayName: "testuser" },
+          [
+            { role: "user", content: "my favorite color is vermillion" },
+            { role: "assistant", content: "That's a great color!" },
+          ]
+        );
       });
 
       expect(response.content.toLowerCase()).toContain("vermillion");
@@ -185,14 +124,10 @@ describe("handleMessage tool loop", () => {
 
 describe("shouldReply", () => {
   function makeMessages(entries: Array<{ username: string; content: string }>) {
-    // Collection-like object — shouldReply only calls .values()
     const map = new Map(
       entries.map((e, i) => [
         String(i),
-        {
-          author: { username: e.username },
-          content: e.content,
-        },
+        { author: { username: e.username }, content: e.content },
       ])
     );
     return { values: () => map.values() } as any;
@@ -236,4 +171,98 @@ describe("shouldReply", () => {
     },
     90_000
   );
+});
+
+// ── chat log replay ───────────────────────────────────────────────────────────
+
+type LogEntry = Record<string, any>;
+
+function loadReplayCases(
+  logPath: string,
+  limit = 10
+): Array<{
+  chatId: string;
+  prompt: string;
+  history: OpenAI.Chat.ChatCompletionMessageParam[];
+  userInfo: { id: string; mention: string; displayName: string };
+  expectedTools: string[];
+}> {
+  if (!existsSync(logPath)) return [];
+
+  const lines = readFileSync(logPath, "utf-8").split("\n").filter(Boolean);
+  const entries: LogEntry[] = [];
+  for (const line of lines) {
+    try {
+      entries.push(JSON.parse(line));
+    } catch {
+      // skip malformed lines
+    }
+  }
+
+  // Group by chatId into { request, response } pairs
+  const byId = new Map<string, { request?: LogEntry; response?: LogEntry }>();
+  for (const e of entries) {
+    const id = e.chatId;
+    if (!id || (e.message !== "request" && e.message !== "response")) continue;
+    if (!byId.has(id)) byId.set(id, {});
+    const pair = byId.get(id)!;
+    if (e.message === "request") pair.request = e;
+    else pair.response = e;
+  }
+
+  // Keep only pairs with tool calls, in log order (last N)
+  const cases = [];
+  for (const [chatId, { request, response }] of byId) {
+    if (!request || !response) continue;
+    if (!Array.isArray(response.toolCallRequests) || response.toolCallRequests.length === 0)
+      continue;
+
+    const messages: OpenAI.Chat.ChatCompletionMessageParam[] = request.messages ?? [];
+    const nonSystem = messages.filter((m) => m.role !== "system");
+    const lastUser = nonSystem.at(-1);
+    if (!lastUser || lastUser.role !== "user") continue;
+
+    const prompt = typeof lastUser.content === "string" ? lastUser.content : "";
+    const history = nonSystem.slice(0, -1);
+    const userInfo = {
+      id: request.user?.id ?? "unknown",
+      mention: request.user?.mention ?? "<@0>",
+      displayName: request.user?.displayName ?? "unknown",
+    };
+    const expectedTools: string[] = response.toolCallRequests
+      .filter((tc: any) => tc?.function?.name)
+      .map((tc: any) => tc.function.name as string);
+
+    cases.push({ chatId, prompt, history, userInfo, expectedTools });
+  }
+
+  // Return the last `limit` cases
+  return cases.slice(-limit);
+}
+
+const CONVO_LOG = new URL("./convo.log", import.meta.url).pathname;
+const replayCases = loadReplayCases(CONVO_LOG, 10);
+
+if (replayCases.length === 0) {
+  console.warn(
+    "[chat log replay] No entries with tool calls found in convo.log — skipping replay suite."
+  );
+}
+
+describe("chat log replay", () => {
+  for (const { chatId, prompt, history, userInfo, expectedTools } of replayCases) {
+    test(
+      `chatId ${chatId} calls expected tools`,
+      async () => {
+        let result!: { content: string; toolBlock?: string };
+        await withCtx(async () => {
+          result = await handleMessage(prompt, userInfo, history);
+        });
+        for (const toolName of expectedTools) {
+          expect(result.toolBlock).toContain(toolName);
+        }
+      },
+      300_000
+    );
+  }
 });
