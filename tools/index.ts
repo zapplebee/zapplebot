@@ -8,7 +8,7 @@ import {
   scoreBoardScoreNames,
 } from "./scoreboard";
 import { getTechStackTool } from "./techstack";
-import { searchTool } from "./wiki";
+import { searchTool, followWikipediaLinkTool } from "./wiki";
 import { utilTools } from "./utils";
 import { uptimeTool } from "./uptime";
 import { snowEmergencyTool } from "./snow";
@@ -32,6 +32,7 @@ export const tools: BotTool[] = [
   readBugs,
   readRepoFile,
   searchTool,
+  followWikipediaLinkTool,
   uptimeTool,
   snowEmergencyTool,
   weatherTool,
