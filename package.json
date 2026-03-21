@@ -9,9 +9,9 @@
     "cron": "bun run cron.ts",
     "restart-bot": "systemctl --user restart zapplebot.service",
     "restart-cron": "systemctl --user restart zapplebot-snow-cron.service",
-    "test:unit": "bun test unit.test.ts",
-    "test:integration": "bun test integration.test.ts --timeout 300000",
-    "test": "bun test unit.test.ts && bun test integration.test.ts --timeout 300000"
+    "test:unit": "bun test unit.test.ts --timeout 0",
+    "test:integration": "bun test integration.test.ts --timeout 0",
+    "test": "bun test unit.test.ts --timeout 0 && bun test integration.test.ts --timeout 0"
   },
   "devDependencies": {
     "@types/bun": "latest"

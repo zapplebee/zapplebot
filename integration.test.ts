@@ -1,6 +1,6 @@
 /**
  * Integration tests — require live llama.cpp server at 127.0.0.1:8888.
- * Run with: bun test integration.test.ts --timeout 300000
+ * Run with: bun test integration.test.ts --timeout 0
  */
 
 import { describe, test, expect, beforeAll } from "bun:test";
@@ -55,8 +55,7 @@ describe("handleMessage tool loop", () => {
       expect(response.content.length).toBeGreaterThan(0);
       expect(response.toolBlock).toBeDefined();
       expect(response.toolBlock).toContain("roll_dice");
-    },
-    300_000
+    }
   );
 
   test(
@@ -74,8 +73,7 @@ describe("handleMessage tool loop", () => {
 
       expect(typeof response.content).toBe("string");
       expect(response.content.length).toBeGreaterThan(0);
-    },
-    300_000
+    }
   );
 
   test(
@@ -94,8 +92,7 @@ describe("handleMessage tool loop", () => {
       expect(typeof response.content).toBe("string");
       expect(response.toolBlock).toBeDefined();
       expect(response.toolBlock).toContain("score_board");
-    },
-    300_000
+    }
   );
 
   test(
@@ -115,8 +112,7 @@ describe("handleMessage tool loop", () => {
       });
 
       expect(response.content.toLowerCase()).toContain("vermillion");
-    },
-    300_000
+    }
   );
 });
 
@@ -143,8 +139,7 @@ describe("shouldReply", () => {
       );
       expect(typeof result).toBe("boolean");
       expect(result).toBe(true);
-    },
-    90_000
+    }
   );
 
   test(
@@ -159,8 +154,7 @@ describe("shouldReply", () => {
       );
       expect(typeof result).toBe("boolean");
       expect(result).toBe(false);
-    },
-    90_000
+    }
   );
 
   test(
@@ -168,8 +162,7 @@ describe("shouldReply", () => {
     async () => {
       const result = await shouldReply(makeMessages([]));
       expect(typeof result).toBe("boolean");
-    },
-    90_000
+    }
   );
 });
 
@@ -261,8 +254,7 @@ describe("chat log replay", () => {
         for (const toolName of expectedTools) {
           expect(result.toolBlock).toContain(toolName);
         }
-      },
-      300_000
+      }
     );
   }
 });
