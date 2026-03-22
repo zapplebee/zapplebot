@@ -10,6 +10,52 @@ type HandleMessageResponse = {
   toolBlock?: string;
 };
 
+const ALWAYS_TOOLS = ["add_persistent_memory"];
+
+async function pickTools(
+  prompt: string,
+  recentHistory: OpenAI.Chat.ChatCompletionMessageParam[]
+): Promise<OpenAI.Chat.ChatCompletionTool[]> {
+  const menu = tools
+    .map((t) => {
+      const oneLiner = t.description.trim().split("\n")[0].trim().slice(0, 120);
+      return `${t.name}: ${oneLiner}`;
+    })
+    .join("\n");
+
+  let chosen: string[] = [];
+  try {
+    const resp = await openai.chat.completions.create({
+      model: MODEL,
+      messages: [
+        {
+          role: "system",
+          content: `/no_think\nPick at most 3 tool names needed to answer the user. Output ONLY a JSON array of tool name strings, nothing else.\n\nAvailable tools:\n${menu}`,
+        },
+        ...recentHistory.slice(-2),
+        { role: "user", content: prompt },
+      ],
+      max_tokens: 80,
+    });
+    const raw = resp.choices[0]?.message?.content ?? "[]";
+    try {
+      chosen = JSON.parse(raw);
+    } catch {
+      const m = raw.match(/\[[\s\S]*?\]/);
+      if (m) chosen = JSON.parse(m[0]);
+    }
+  } catch {
+    return openaiTools;
+  }
+
+  for (const name of ALWAYS_TOOLS) {
+    if (!chosen.includes(name)) chosen.push(name);
+  }
+
+  const selected = openaiTools.filter((t) => chosen.includes(t.function.name));
+  return selected.length > 0 ? selected : openaiTools;
+}
+
 export type UserInfo = {
   id: string;
   mention: string;      // <@id> — what the model sees
@@ -55,7 +101,7 @@ ${relevantMems.map((e) => `- ${e.summary} -- from ${e.date}`).join("\n")}`,
         ]
       : [];
 
-  const dndTrigger = prompt.includes("/dnd")
+  const dndTrigger = process.env.ENABLE_DND === "true" && prompt.includes("/dnd")
     ? [
         {
           role: "system" as const,
@@ -86,21 +132,30 @@ ${relevantMems.map((e) => `- ${e.summary} -- from ${e.date}`).join("\n")}`,
     messages,
   });
 
+  const selectedTools = await pickTools(prompt, history);
+  subLogger.debug("tool picker", {
+    selected: selectedTools.map((t) => t.function.name),
+  });
+
   let reply = "";
   const toolCallRequests: unknown[] = [];
   const toolCallResults: unknown[] = [];
   let turn = 0;
+  const MAX_TURNS = 5;
 
   // Agentic tool loop
   while (true) {
     turn++;
+    const forceFinal = turn > MAX_TURNS;
+    if (forceFinal) {
+      subLogger.warn("tool loop turn limit reached, forcing final response");
+    }
     const turnStart = Date.now();
 
     const response = await openai.chat.completions.create({
       model: MODEL,
       messages,
-      tools: openaiTools,
-      tool_choice: "auto",
+      ...(forceFinal ? {} : { tools: selectedTools, tool_choice: "auto" }),
       max_tokens: 2048,
     });
 

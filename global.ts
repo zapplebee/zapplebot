@@ -51,8 +51,19 @@ export function getAllCtx(): Record<string, MemoryEntry> {
   return topLevelMemoryObj;
 }
 
+const gitSha = (() => {
+  try {
+    return Bun.spawnSync(["git", "rev-parse", "--short", "HEAD"])
+      .stdout.toString()
+      .trim();
+  } catch {
+    return "unknown";
+  }
+})();
+
 export const logger = winston.createLogger({
   level: "debug",
+  defaultMeta: { sha: gitSha },
   format: winston.format.combine(
     winston.format.timestamp(),
     winston.format.json()
@@ -64,6 +75,7 @@ export const logger = winston.createLogger({
 
 export const convoLogger = winston.createLogger({
   level: "info",
+  defaultMeta: { sha: gitSha },
   format: winston.format.combine(
     winston.format.timestamp(),
     winston.format.json()
