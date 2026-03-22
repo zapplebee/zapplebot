@@ -143,3 +143,15 @@ export const searchTool = tool({
     return wikiSubAgent({ search: query });
   },
 });
+
+export const followWikipediaLinkTool = tool({
+  name: "follow_wikipedia_link",
+  description: text`Fetch a Wikipedia article from a direct URL (e.g. https://en.wikipedia.org/wiki/RTX_50_series). Use when a user pastes a Wikipedia link directly.`,
+  parameters: { url: z.string() },
+  implementation: async ({ url }) => {
+    const match = url.match(/en(?:\.m)?\.wikipedia\.org\/wiki\/([^#?]+)/);
+    if (!match) return { error: "Not a valid Wikipedia URL" };
+    const title = decodeURIComponent(match[1].replace(/_/g, " "));
+    return wikiSubAgent({ search: title });
+  },
+});

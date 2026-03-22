@@ -8,11 +8,13 @@ import {
   scoreBoardScoreNames,
 } from "./scoreboard";
 import { getTechStackTool } from "./techstack";
-import { searchTool } from "./wiki";
+import { searchTool, followWikipediaLinkTool } from "./wiki";
 import { utilTools } from "./utils";
 import { uptimeTool } from "./uptime";
 import { snowEmergencyTool } from "./snow";
 import { dndCombatTool } from "./dnd";
+
+const DND_ENABLED = process.env.ENABLE_DND === "true";
 import { weatherTool } from "./weather";
 import { velaTool } from "./vela";
 import type { BotTool } from "../bot-tool";
@@ -32,10 +34,11 @@ export const tools: BotTool[] = [
   readBugs,
   readRepoFile,
   searchTool,
+  followWikipediaLinkTool,
   uptimeTool,
   snowEmergencyTool,
   weatherTool,
-  dndCombatTool,
+  ...(DND_ENABLED ? [dndCombatTool] : []),
   velaTool,
   ...utilTools,
 ];
