@@ -81,11 +81,18 @@ OPENAI_MODEL=gpt-4o-mini
 ANTHROPIC_API_KEY=sk-ant-...
 CLAUDE_MODEL=claude-haiku-4-5-20251001
 
-# GitHub (for github issues tool)
+# GitHub (for github tools: bugReport, readBugs, readRepoFile)
 GH_PAT=github_pat_...
 
 # Webhook secret for POST /webhook (generate with: openssl rand -hex 32)
 WEBHOOK_SECRET=your_secret_here
+
+# Feature flags (optional)
+ENABLE_DND=false          # set true to enable dnd_combat tool and /dnd slash commands
+
+# Embedding model for memory similarity search (optional)
+# If unset or if the model doesn't support embeddings, falls back to recency-based retrieval
+LLAMA_EMBED_MODEL=local-model
 ```
 
 ### 4. Run the bot
@@ -142,7 +149,7 @@ Change `LLM_BACKEND` in `.env` and restart the bot. Claude Code slash commands a
 
 ## Tools
 
-The bot calls these autonomously — no slash commands needed.
+The bot selects tools autonomously — no slash commands needed for most. A tool-picker pre-pass selects ≤3 relevant tools per request to stay within the LLM context window.
 
 | Tool | What it does |
 |---|---|
@@ -151,15 +158,21 @@ The bot calls these autonomously — no slash commands needed.
 | `get_score_board` | Show all scores |
 | `score_board_score_names` | List available score categories |
 | `add_persistent_memory` | Save a long-term fact about a user |
-| `search_wikipedia` | Look up a topic |
+| `search_wikipedia` | Search Wikipedia by keyword via sub-agent |
+| `follow_wikipedia_link` | Summarise a Wikipedia URL dropped in chat |
 | `run_typescript_javascript` | Execute code in a sandboxed Docker container |
-| `get_github_issues` | Fetch open issues from a GitHub repo |
-| `get_tech_stack` | Return info about the bot's own stack |
+| `bugReport` | File a GitHub issue on this repo |
+| `readBugs` | List open GitHub issues (with optional label/query filter) |
+| `readRepoFile` | Read a file from this repo via GitHub API |
+| `get_tech_stack` | Return info about the bot's own runtime and stack |
 | `get_uptime` | Show how long the bot has been running |
+| `get_current_date` | Return today's date as an ISO string |
+| `get_time_zone` | Return the configured timezone string |
+| `get_location` | Return the bot's host city and state |
 | `get_snow_emergency` | Current Minneapolis snow emergency status |
 | `get_weather` | Current Minneapolis weather plus observed-vs-projected precipitation today |
-| `run_vela_cli` | Inspect Vela CI/CD state via the local Vela CLI |
-| `get_current_date` / `get_current_time_for_timezone` | Date/time utilities |
+| `run_vela_cli` | Inspect Vela CI/CD state via the local Vela CLI (read-only commands only) |
+| `dnd_combat` | D&D 5e kobold/goblin combat simulator — **requires `ENABLE_DND=true`** |
 
 ---
 
@@ -219,11 +232,14 @@ Discord message
   → in botland? → judge LLM decides if bot should reply
       → handleMessage()
           → fetch relevant memories (cosine similarity or recency fallback)
-          → agentic tool loop (calls tools until finish_reason=stop)
-          → send reply + optional tool trace block
+          → tool picker: 1 LLM call picks ≤3 relevant tools
+          → agentic tool loop (MAX_TURNS=5, then forces text reply)
+          → send reply + optional tool trace attachment
 ```
 
-**Agentic loop**: the bot can call multiple tools in sequence before replying. Each turn is logged with timing, token usage, and tool results.
+**Tool picker**: before the main loop, a lightweight LLM call receives a compact one-line-per-tool menu and returns a JSON array of ≤3 tool names. This reduces main-call prompt tokens from ~1,900 (all 20 tools) to ~450, keeping multi-turn tool calls within the 4,096-token context window. `add_persistent_memory` is always included. Falls back to all tools if the picker response is unparseable.
+
+**Agentic loop**: the bot can call multiple tools in sequence before replying. Capped at `MAX_TURNS=5`; on the sixth turn, tools are stripped from the request to force a text response and prevent infinite loops. Each turn is logged with timing, token usage, and tool results.
 
 **Judge**: a fast single-call to the LLM (max 20 tokens) to gate unprompted replies in botland. Returns `{"should_reply": true/false}`.
 
@@ -821,7 +837,14 @@ sequenceDiagram
 
 ## Logging
 
-All interactions log to **`chat.log`** as structured JSON (Winston). Both the bot process and cron jobs write to the same file. Each bot request gets a unique `chatId`; cron entries are tagged with `process: "snow-emergency-cron"`.
+Two log files, both structured JSON via Winston. Every entry carries a `sha` field with the short git commit hash of the running build, making it easy to correlate behaviour changes with deployments.
+
+| File | Contents |
+|---|---|
+| `chat.log` | All debug/info/warn/error events — bot, cron, and HTTP server |
+| `convo.log` | Full request and response payloads per `chatId` (messages array, tool calls, results) |
+
+Both the bot process and cron jobs append to `chat.log`. `convo.log` is written only by `handleMessage`.
 
 **View live logs:**
 
@@ -844,10 +867,11 @@ journalctl --user -u zapplebot-snow-cron.service -n 50
 Key log fields:
 
 ```json
-{ "chatId": "...", "message": "handle complete", "turns": 2, "toolCallCount": 1, "total_ms": 4200 }
-{ "chatId": "...", "message": "tool call", "tool": "roll_dice", "success": true, "duration_ms": 0 }
-{ "chatId": "...", "message": "llm response", "turn": 1, "finish_reason": "tool_calls", "usage": {...} }
-{ "process": "snow-emergency-cron", "message": "decision: already posted, skipping", "version": "..." }
+{ "sha": "f905eec", "chatId": "...", "message": "tool picker", "selected": ["roll_dice", "add_persistent_memory"] }
+{ "sha": "f905eec", "chatId": "...", "message": "llm response", "turn": 1, "finish_reason": "tool_calls", "usage": {...} }
+{ "sha": "f905eec", "chatId": "...", "message": "tool call", "tool": "roll_dice", "success": true, "duration_ms": 0 }
+{ "sha": "f905eec", "chatId": "...", "message": "handle complete", "turns": 2, "toolCallCount": 1, "total_ms": 4200 }
+{ "sha": "f905eec", "process": "snow-emergency-cron", "message": "decision: already posted, skipping", "version": "..." }
 ```
 
 ---
@@ -855,10 +879,17 @@ Key log fields:
 ## Testing
 
 ```bash
-bun test integration.test.ts
+# Fast unit tests — no LLM required
+bun run test:unit
+
+# Integration tests — requires LLM backend running
+bun run test:integration
+
+# Both suites
+bun run test
 ```
 
-Tests cover: tool schema validation, individual tool implementations, full `handleMessage` tool loop, and judge decisions. Timeouts are long (300s) to accommodate CPU inference.
+`unit.test.ts` covers tool schema validation and pure logic with no LLM calls. `integration.test.ts` covers all 20 tools and the full `handleMessage` loop against the live backend. Timeouts are disabled (`--timeout 0`) to accommodate CPU inference.
 
 ---
 
@@ -875,6 +906,8 @@ For running llama.cpp as a persistent system service on a shared Mac (survives u
 | `memory.json` | Long-term user memories with embeddings |
 | `db.json` | Scoreboard data |
 | `cron.json` | Cron job state (last posted snow emergency version) |
-| `chat.log` | Structured interaction logs |
+| `dnd.json` | D&D combat state (written when `ENABLE_DND=true`) |
+| `chat.log` | Structured interaction logs (all processes) |
+| `convo.log` | Full request/response payloads per `chatId` |
 
 These are gitignored. Back them up if they matter.
